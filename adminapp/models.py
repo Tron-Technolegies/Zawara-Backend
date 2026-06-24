@@ -27,6 +27,13 @@ class Product(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     description = models.TextField(blank=True)
     stock = models.PositiveIntegerField(default=0)
+    SIZE_CHOICES = [
+        ("S", "Small"),
+        ("M", "Medium"),
+        ("XL", "Extra Large"),
+    ]
+
+    size = models.CharField(max_length=2,choices=SIZE_CHOICES)
     # image = CloudinaryField("image", blank=True, null=True)
     # materials = models.ManyToManyField(Material, blank=True, related_name="products")
 

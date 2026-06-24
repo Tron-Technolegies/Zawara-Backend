@@ -54,7 +54,27 @@ def view_categories(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-    
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def update_category(request, category_id):
+    try:
+        category = get_object_or_404(Category,id=category_id)
+        category.name = request.POST.get("name",category.name)
+        category.description = request.POST.get("description",category.description)
+        category.status = request.POST.get("status",category.status)
+        category.save()
+
+        return JsonResponse({
+            "id": category.id,
+            "name": category.name,
+            "description": category.description,
+            "status": category.status,
+            "message": "Category updated successfully"
+        })
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)},status=500)
 
 
 @csrf_exempt
@@ -88,12 +108,13 @@ def add_product(request):
         category_id = data.get("category")
         gender = data.get("gender")
         price = data.get("price")
+        size= data.get("size")
         description = data.get("description", "")
         stock = data.get("stock", 0)
 
-        if not all([name, category_id, gender, price]):
+        if not all([name, category_id, gender,size, price]):
             return JsonResponse(
-                {"error": "name, category, gender and price are required"},
+                {"error": "name, category, gender,size and price are required"},
                 status=400
             )
 
@@ -104,6 +125,7 @@ def add_product(request):
             category=category,
             gender=gender,
             price=price,
+            size=size,
             description=description,
             stock=stock,
         )
@@ -117,6 +139,7 @@ def add_product(request):
             },
             "gender": product.gender,
             "price": str(product.price),
+            "size":product.size,
             "description": product.description,
             "stock": product.stock,
         }, status=201)
@@ -151,6 +174,7 @@ def view_products(request):
             } if product.category else None,
             "gender": product.gender,
             "price": str(product.price),
+            "size":product.size,
             "description": product.description,
             "stock": product.stock,
             "image": None,
@@ -186,30 +210,44 @@ def update_product(request, product_id):
     try:
         product = get_object_or_404(Product, id=product_id)
 
-        product.name = request.POST.get("name", product.name)
+        data = json.loads(request.body)
 
-        category_id = request.POST.get("category")
+        product.name = data.get("name", product.name)
+
+        category_id = data.get("category")
         if category_id:
             product.category = Category.objects.get(id=category_id)
 
-        product.gender = request.POST.get("gender", product.gender)
-        product.price = request.POST.get("price", product.price)
-        product.description = request.POST.get(
+        product.gender = data.get("gender", product.gender)
+        product.size = data.get("size", product.size)
+        product.price = data.get("price", product.price)
+        product.description = data.get(
             "description",
             product.description
         )
-        product.stock = request.POST.get("stock", product.stock)
+        product.stock = data.get("stock", product.stock)
 
         product.save()
 
-        return JsonResponse({"message": "Product updated successfully"})
+        return JsonResponse({
+            "id": product.id,
+            "name": product.name,
+            "category": {
+                "id": product.category.id,
+                "name": product.category.name
+            },
+            "gender": product.gender,
+            "size": product.size,
+            "price": str(product.price),
+            "description": product.description,
+            "stock": product.stock,
+        })
 
     except Category.DoesNotExist:
-        return JsonResponse({"error": "Category not found"},status=404)
+        return JsonResponse({"error": "Category not found"}, status=404)
 
     except Exception as e:
-        return JsonResponse({"error": str(e)},status=500)
-    
+        return JsonResponse({"error": str(e)}, status=500)
 
 @csrf_exempt
 @require_http_methods(["DELETE"])
