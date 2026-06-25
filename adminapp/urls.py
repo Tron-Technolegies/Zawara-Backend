@@ -3,6 +3,9 @@ from adminapp import views
 
 
 urlpatterns = [
+
+    path("login/",views.admin_login),
+
     path('categories/add/', views.add_category, name='add_category'),
     path('categories/', views.view_categories, name='view_categories'),
     path('categories/delete/<int:category_id>/', views.delete_category, name='delete_category'),
@@ -13,5 +16,7 @@ urlpatterns = [
     path('product/<int:product_id>/', views.view_product, name='view_product'),
     path('product/update/<int:product_id>/', views.update_product, name='update_product'),
     path('product/delete/<int:product_id>/', views.delete_product, name='delete_product'),
+
+    path('dashboard/', views.dashboard, name='dashboard'),
 
 ]
