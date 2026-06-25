@@ -4,7 +4,7 @@ from rest_framework.decorators import APIView, api_view, permission_classes
 from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny
 from rest_framework.response import Response
 import re
-from .models import UserProfile,Cart, CartItem
+from .models import UserProfile,Cart, CartItem,Wishlist
 from adminapp.models import Category,Product
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
@@ -19,6 +19,7 @@ from django.utils.encoding import force_bytes
 from django.core.mail import send_mail
 from django.views.decorators.csrf import csrf_exempt
 import json
+
 
 
 
@@ -242,7 +243,15 @@ def view_categories(request):
     search = request.GET.get("search", "")
 
     categories = Category.objects.filter(
-        Q(name__icontains=search))
+        status="Active"
+    )
+
+    if search:
+        categories = categories.filter(
+            name__icontains=search
+        )
+
+    categories = categories.order_by("name")
 
     data = [
         {
@@ -253,7 +262,10 @@ def view_categories(request):
         for category in categories
     ]
 
-    return JsonResponse({"categories": data}, status=200)
+    return JsonResponse(
+        {"categories": data},
+        status=200
+    )
 
 
 
@@ -361,48 +373,56 @@ def view_single_product(request, product_id):
         )
     
 
-@csrf_exempt
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def add_to_cart(request):
-    if request.method != "POST":
-        return JsonResponse(
-            {"error": "POST method required"},
-            status=405
-        )
-
     try:
-        data = json.loads(request.body)
+        data = request.data
 
         user = request.user
 
         product_id = data.get("product_id")
         size = data.get("size")
-        quantity = int(
-            data.get("quantity", 1)
-        )
+        quantity = int(data.get("quantity", 1))
 
-        product = Product.objects.get(
-            id=product_id
-        )
+        if quantity <= 0:
+            return JsonResponse(
+                {"error": "Quantity must be greater than 0"},
+                status=400
+            )
 
-        cart, created = Cart.objects.get_or_create(
-            user=user
-        )
+        product = Product.objects.get(id=product_id)
+
+        if quantity > product.stock:
+            return JsonResponse(
+                {"error": "Not enough stock"},
+                status=400
+            )
+
+        cart, created = Cart.objects.get_or_create(user=user)
 
         cart_item, created = CartItem.objects.get_or_create(
             cart=cart,
             product=product,
             size=size,
-            defaults={
-                "quantity": quantity
-            }
+            defaults={"quantity": quantity}
         )
 
         if not created:
-            cart_item.quantity += quantity
+            new_quantity = cart_item.quantity + quantity
+
+            if new_quantity > product.stock:
+                return JsonResponse(
+                    {"error": "Only limited stock available"},
+                    status=400
+                )
+
+            cart_item.quantity = new_quantity
             cart_item.save()
 
         return JsonResponse({
-            "message": "Product added to cart"
+            "message": "Product added to cart",
+            "quantity": cart_item.quantity
         })
 
     except Product.DoesNotExist:
@@ -417,21 +437,24 @@ def add_to_cart(request):
             status=500
         )
     
-@csrf_exempt
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def view_cart(request):
     try:
-        cart = Cart.objects.get(
-            user=request.user
-        )
+        cart = Cart.objects.get(user=request.user)
 
         items = []
+        subtotal = 0
 
         for item in cart.items.all():
+            total = float(item.product.price) * item.quantity
+            subtotal += total
+
             items.append({
                 "id": item.id,
                 "product_id": item.product.id,
                 "name": item.product.name,
-                "price": str(item.product.price),
+                "price": float(item.product.price),
                 "image": (
                     item.product.image.url
                     if item.product.image
@@ -439,36 +462,152 @@ def view_cart(request):
                 ),
                 "size": item.size,
                 "quantity": item.quantity,
-                "total": float(
-                    item.product.price
-                ) * item.quantity
+                "total": total,
             })
 
         return JsonResponse({
-            "items": items
+            "items": items,
+            "subtotal": subtotal,
+            "total": subtotal,   # You can later subtract discounts or add shipping
         })
 
     except Cart.DoesNotExist:
         return JsonResponse({
-            "items": []
+            "items": [],
+            "subtotal": 0,
+            "total": 0,
         })
     
-@csrf_exempt
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
 def remove_cart_item(request, item_id):
     try:
-        item = CartItem.objects.get(
+        cart_item = CartItem.objects.get(
             id=item_id,
             cart__user=request.user
+        )
+
+        cart_item.delete()
+
+        return JsonResponse({
+            "message": "Item removed successfully"
+        })
+
+    except CartItem.DoesNotExist:
+        return JsonResponse(
+            {"error": "Cart item not found"},
+            status=404
+        )
+    
+
+
+import uuid
+
+from django.shortcuts import get_object_or_404
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
+def add_to_wishlist(request):
+
+    product_id = request.data.get("product_id")
+
+    if not product_id:
+        return Response(
+            {"error": "Product ID is required"},
+            status=400
+        )
+
+    product = get_object_or_404(
+        Product,
+        id=product_id
+    )
+
+    if request.user.is_authenticated:
+
+        wishlist_item, created = Wishlist.objects.get_or_create(
+            user=request.user,
+            product=product
+        )
+
+        return Response({
+            "message": (
+                "Added to wishlist"
+                if created
+                else "Already in wishlist"
+            )
+        })
+
+    guest_id = request.headers.get("guest_id")
+
+    if not guest_id:
+        guest_id = str(uuid.uuid4())
+
+    wishlist_item, created = Wishlist.objects.get_or_create(
+        guest_id=guest_id,
+        product=product
+    )
+
+    return Response({
+        "message": (
+            "Added to wishlist"
+            if created
+            else "Already in wishlist"
+        ),
+        "guest_id": guest_id
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def view_wishlist(request):
+
+    wishlist = Wishlist.objects.filter(
+        user=request.user
+    ).select_related("product")
+
+    items = []
+
+    for item in wishlist:
+
+        items.append({
+            "id": item.id,
+            "product_id": item.product.id,
+            "name": item.product.name,
+            "category": item.product.category.name,
+            "price": float(item.product.price),
+            "image": item.product.image.url if item.product.image else None,
+        })
+
+    return JsonResponse({
+        "items": items
+    })
+
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def remove_wishlist_item(request, wishlist_id):
+
+    try:
+
+        item = Wishlist.objects.get(
+            id=wishlist_id,
+            user=request.user
         )
 
         item.delete()
 
         return JsonResponse({
-            "message": "Item removed"
+            "message": "Removed from wishlist"
         })
 
-    except CartItem.DoesNotExist:
+    except Wishlist.DoesNotExist:
+
         return JsonResponse(
-            {"error": "Item not found"},
+            {"error": "Wishlist item not found"},
             status=404
         )

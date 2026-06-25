@@ -1,11 +1,12 @@
 from django.db import models
+from cloudinary.models import CloudinaryField
 
 # Create your models here.
 
 
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
-    # image = CloudinaryField("category", blank=True, null=True)
+    image = CloudinaryField("category", blank=True, null=True)
     description = models.TextField(blank=True)
     status = models.CharField(
         max_length=10,

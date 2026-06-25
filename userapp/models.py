@@ -65,6 +65,13 @@ class CartItem(models.Model):
             "size"
         )
 
+
+class Wishlist(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.CASCADE,null=True,blank=True,related_name="wishlist")
+    guest_id = models.CharField(max_length=100,null=True,blank=True)
+    product = models.ForeignKey(Product,on_delete=models.CASCADE,related_name="wishlisted_by")
+    created_at = models.DateTimeField(auto_now_add=True)
+
     
 
 
