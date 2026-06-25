@@ -35,7 +35,7 @@ class Product(models.Model):
     ]
 
     size = models.CharField(max_length=2,choices=SIZE_CHOICES)
-    # image = CloudinaryField("image", blank=True, null=True)
+    image = CloudinaryField("image", blank=True, null=True)
     material = models.CharField(max_length=100, blank=True, null=True)
 
 class Order(models.Model):
