@@ -29,7 +29,11 @@ SECRET_KEY = 'django-insecure-e4+!sl@^f&jmlh0^-*==mc+jmej&-#pcgl2v9^-p67#u%qzp7#
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "False") == "True"
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    "zawara-backend.onrender.com",
+    "localhost",
+    "127.0.0.1",
+]
 
 
 # Application definition
