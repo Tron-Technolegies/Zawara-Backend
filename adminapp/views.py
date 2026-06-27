@@ -49,6 +49,54 @@ def admin_login(request):
         }
     })
 
+
+from django.contrib.auth.models import User
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny, IsAdminUser
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def view_customers(request):
+    customers = User.objects.filter(is_staff=False).select_related("userprofile")
+    data = []
+    for customer in customers:
+        data.append({
+            "id": customer.id,
+            "full_name": f"{customer.first_name} {customer.last_name}".strip(),
+            "email": customer.email,
+            "mobile": customer.userprofile.mobile if hasattr(customer, "userprofile") else "",
+            "date_joined": customer.date_joined,
+            "is_active": customer.is_active,
+        })
+
+    return Response(data)
+
+from django.contrib.auth.models import User
+from django.shortcuts import get_object_or_404
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAdminUser
+from rest_framework.response import Response
+
+@api_view(["DELETE"])
+@permission_classes([AllowAny])   # Change to AllowAny while testing if needed
+def delete_customer(request, customer_id):
+    customer = get_object_or_404(User, id=customer_id)
+
+    # Prevent deleting admin accounts
+    if customer.is_staff:
+        return Response(
+            {"error": "Admin users cannot be deleted."},
+            status=400
+        )
+
+    customer.delete()
+
+    return Response(
+        {"message": "Customer deleted successfully."},
+        status=200
+    )
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def add_category(request):
@@ -56,6 +104,7 @@ def add_category(request):
         name = request.POST.get("name")
         description = request.POST.get("description", "")
         status = request.POST.get("status", "Active")
+        image = request.FILES.get("image") 
 
         if not name:
             return JsonResponse(
@@ -66,7 +115,8 @@ def add_category(request):
         category = Category.objects.create(
             name=name,
             description=description,
-            status=status
+            status=status,
+            image=image,
         )
 
         return JsonResponse({
@@ -74,15 +124,18 @@ def add_category(request):
             "name": category.name,
             "description": category.description,
             "status": category.status,
+            "image": category.image.url if category.image else None,
         }, status=201)
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+    
+
 
 @require_http_methods(["GET"])
 def view_categories(request):
     try:
-        categories = Category.objects.all()
+        categories = Category.objects.all().order_by("id")
 
         data = [
             {
@@ -90,6 +143,7 @@ def view_categories(request):
                 "name": category.name,
                 "description": category.description,
                 "status": category.status,
+                "image": category.image.url if category.image else None,
             }
             for category in categories
         ]
@@ -99,14 +153,23 @@ def view_categories(request):
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
 
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def update_category(request, category_id):
     try:
-        category = get_object_or_404(Category,id=category_id)
-        category.name = request.POST.get("name",category.name)
-        category.description = request.POST.get("description",category.description)
-        category.status = request.POST.get("status",category.status)
+        category = get_object_or_404(Category, id=category_id)
+
+        category.name = request.POST.get("name", category.name)
+        category.description = request.POST.get("description", category.description)
+        category.status = request.POST.get("status", category.status)
+
+        # Update image if a new one is uploaded
+        image = request.FILES.get("image")
+        if image:
+            category.image = image
+
         category.save()
 
         return JsonResponse({
@@ -114,11 +177,12 @@ def update_category(request, category_id):
             "name": category.name,
             "description": category.description,
             "status": category.status,
+            "image": category.image.url if category.image else None,
             "message": "Category updated successfully"
         })
 
     except Exception as e:
-        return JsonResponse({"error": str(e)},status=500)
+        return JsonResponse({"error": str(e)}, status=500)  
 
 
 @csrf_exempt
