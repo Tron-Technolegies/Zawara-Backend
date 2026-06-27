@@ -12,10 +12,6 @@ class UserProfile(models.Model):
     def __str__(self):
         return self.user.username
     
-    class Cart(models.Model):
-        user = models.ForeignKey(User, null=True, blank=True, on_delete=models.CASCADE)
-    guest_id = models.CharField(max_length=100, null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
 
 class Cart(models.Model):
     user = models.OneToOneField(
