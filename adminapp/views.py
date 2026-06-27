@@ -146,20 +146,19 @@ import json
 @require_http_methods(["POST"])
 def add_product(request):
     try:
-        data = json.loads(request.body)
-
-        name = data.get("name")
-        category_id = data.get("category")
-        gender = data.get("gender")
-        price = data.get("price")
-        size = data.get("size")
-        material = data.get("material")  # ✅ ADDED ONLY THIS
-        description = data.get("description", "")
-        stock = data.get("stock", 0)
+        name = request.POST.get("name")
+        category_id = request.POST.get("category")
+        gender = request.POST.get("gender")
+        price = request.POST.get("price")
+        size = request.POST.get("size")
+        material = request.POST.get("material")
+        description = request.POST.get("description", "")
+        stock = request.POST.get("stock", 0)
+        image = request.FILES.get("image")
 
         if not all([name, category_id, gender, size, price]):
             return JsonResponse(
-                {"error": "name, category, gender,size and price are required"},
+                {"error": "name, category, gender, size and price are required"},
                 status=400
             )
 
@@ -171,9 +170,10 @@ def add_product(request):
             gender=gender,
             price=price,
             size=size,
-            material=material, 
+            material=material,
             description=description,
             stock=stock,
+            image=image,
         )
 
         return JsonResponse({
@@ -186,22 +186,17 @@ def add_product(request):
             "gender": product.gender,
             "price": str(product.price),
             "size": product.size,
-            "material": product.material,  # ✅ ADDED ONLY THIS
+            "material": product.material,
+            "image": product.image.url if product.image else None,
             "description": product.description,
             "stock": product.stock,
         }, status=201)
 
     except Category.DoesNotExist:
-        return JsonResponse(
-            {"error": "Category not found"},
-            status=404
-        )
+        return JsonResponse({"error": "Category not found"},status=404)
 
     except Exception as e:
-        return JsonResponse(
-            {"error": str(e)},
-            status=500
-        )
+        return JsonResponse({"error": str(e)},status=500)
 
 @require_http_methods(["GET"])
 def view_products(request):
@@ -223,7 +218,7 @@ def view_products(request):
             "material": product.material, 
             "description": product.description,
             "stock": product.stock,
-            "image": None,
+            "image": product.image.url if product.image else None,
             "is_published": True
         })
 
@@ -257,23 +252,26 @@ def update_product(request, product_id):
     try:
         product = get_object_or_404(Product, id=product_id)
 
-        data = json.loads(request.body)
+        product.name = request.POST.get("name", product.name)
 
-        product.name = data.get("name", product.name)
-
-        category_id = data.get("category")
+        category_id = request.POST.get("category")
         if category_id:
             product.category = Category.objects.get(id=category_id)
 
-        product.gender = data.get("gender", product.gender)
-        product.size = data.get("size", product.size)
-        product.material = data.get("material", product.material)  # ✅ ADDED ONLY THIS
-        product.price = data.get("price", product.price)
-        product.description = data.get(
+        product.gender = request.POST.get("gender", product.gender)
+        product.size = request.POST.get("size", product.size)
+        product.material = request.POST.get("material", product.material)
+        product.price = request.POST.get("price", product.price)
+        product.description = request.POST.get(
             "description",
             product.description
         )
-        product.stock = data.get("stock", product.stock)
+        product.stock = request.POST.get("stock", product.stock)
+
+        # Image update
+        image = request.FILES.get("image")
+        if image:
+            product.image = image
 
         product.save()
 
@@ -286,10 +284,11 @@ def update_product(request, product_id):
             },
             "gender": product.gender,
             "size": product.size,
-            "material": product.material, 
+            "material": product.material,
             "price": str(product.price),
             "description": product.description,
             "stock": product.stock,
+            "image": product.image.url if product.image else None,
         })
 
     except Category.DoesNotExist:
@@ -297,7 +296,6 @@ def update_product(request, product_id):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-    
 
 @csrf_exempt
 @require_http_methods(["DELETE"])
