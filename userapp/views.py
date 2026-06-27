@@ -328,8 +328,14 @@ def view_categories(request):
 @require_http_methods(["GET"])
 def view_products(request):
     search = request.GET.get("search")
+    name = request.GET.get("name")
     category = request.GET.get("category")
     gender = request.GET.get("gender")
+    size = request.GET.get("size")
+    material = request.GET.get("material")
+    min_price = request.GET.get("min_price")
+    max_price = request.GET.get("max_price")
+    price = request.GET.get("price")
 
     try:
         page = int(request.GET.get("page", 1))
@@ -347,7 +353,10 @@ def view_products(request):
     ).all()
 
     if category:
-        products = products.filter(category_id=category)
+        if category.isdigit():
+            products = products.filter(category_id=category)
+        else:
+            products = products.filter(category__name__icontains=category)
 
     if gender:
         products = products.filter(gender=gender)
@@ -356,6 +365,57 @@ def view_products(request):
         products = products.filter(
             Q(name__icontains=search)
         )
+
+    if name:
+        products = products.filter(
+            Q(name__icontains=name)
+        )
+
+    if size:
+        SIZE_MAP = {
+            "s": "S",
+            "small": "S",
+            "m": "M",
+            "medium": "M",
+            "xl": "XL",
+            "extra large": "XL",
+            "l": "L",
+            "large": "L",
+        }
+        sizes = [s.strip().lower() for s in size.split(",") if s.strip()]
+        mapped_sizes = [SIZE_MAP.get(s, s.upper()) for s in sizes]
+        if len(mapped_sizes) == 1:
+            products = products.filter(size__iexact=mapped_sizes[0])
+        elif len(mapped_sizes) > 1:
+            products = products.filter(size__in=mapped_sizes)
+
+    if material:
+        materials = [m.strip() for m in material.split(",") if m.strip()]
+        if len(materials) == 1:
+            products = products.filter(material__icontains=materials[0])
+        elif len(materials) > 1:
+            q_objects = Q()
+            for mat in materials:
+                q_objects |= Q(material__icontains=mat)
+            products = products.filter(q_objects)
+
+    if price:
+        try:
+            products = products.filter(price=float(price))
+        except ValueError:
+            pass
+
+    if min_price:
+        try:
+            products = products.filter(price__gte=float(min_price))
+        except ValueError:
+            pass
+
+    if max_price:
+        try:
+            products = products.filter(price__lte=float(max_price))
+        except ValueError:
+            pass
 
     total_products = products.count()
     total_pages = (total_products + limit - 1) // limit
@@ -378,6 +438,8 @@ def view_products(request):
             "price": str(product.price),
             "description": product.description,
             "stock": product.stock,
+            "size": product.size,
+            "material": product.material,
             "image": product.image.url if product.image else None,
         })
 
@@ -411,6 +473,8 @@ def view_single_product(request, product_id):
             "price": str(product.price),
             "description": product.description,
             "stock": product.stock,
+            "size": product.size,
+            "material": product.material,
 
             "image": (
                 product.image.url
@@ -427,6 +491,51 @@ def view_single_product(request, product_id):
             status=404
         )
     
+
+
+from decimal import Decimal
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def checkout_summary(request):
+    try:
+        cart = Cart.objects.get(user=request.user)
+    except Cart.DoesNotExist:
+        return Response(
+            {"error": "Cart is empty"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    items = []
+    subtotal = Decimal("0.00")
+
+    for item in cart.items.select_related("product").all():
+
+        line_total = item.product.price * item.quantity
+        subtotal += line_total
+
+        items.append({
+            "id": item.id,
+            "image": request.build_absolute_uri(
+                item.product.image.url
+            ) if item.product.image else "",
+            "name": item.product.name,
+            "size": item.size,
+            "quantity": item.quantity,
+            "price": str(item.product.price),
+            "total": str(line_total),
+        })
+
+    shipping = Decimal("0.00")
+
+    total = subtotal + shipping
+
+    return Response({
+        "items": items,
+        "subtotal": str(subtotal),
+        "shipping": str(shipping),
+        "total": str(total),
+    })
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
