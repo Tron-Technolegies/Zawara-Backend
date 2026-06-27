@@ -4,6 +4,9 @@ from userapp import views
 urlpatterns = [
     path("signup/", views.signup, name='signup'),
     path("login/", views.login, name='login'),
+    path("user_details/", views.user_details, name="user_details"),
+    path("update-profile/", views.update_profile, name="update_profile"),
+
     path("forgot-password/",views.forgot_password, name='forgot_password'),
     path("reset-password/",views.reset_password, name='reset_password'),
     path('view_categories/', views.view_categories, name='view_categories'),
@@ -14,5 +17,11 @@ urlpatterns = [
     path("remove_cart_item/<int:item_id>/",views.remove_cart_item,name="remove_cart_item"),
     path("add_to_wishlist/",views.add_to_wishlist),
     path("view_wishlist/",views.view_wishlist),
-    path("remove_wishlist_item/<int:wishlist_id>/",views.remove_wishlist_item)
+    path("remove_wishlist_item/<int:wishlist_id>/",views.remove_wishlist_item),
+    path("address/add/", views.add_address),
+    path("address/", views.get_addresses),
+    path("address/default/", views.get_default_address),
+    path("address/update/<int:pk>/", views.update_address),
+    path("address/delete/<int:pk>/", views.delete_address),
+    path("address/default/<int:pk>/", views.set_default_address),
 ]

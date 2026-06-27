@@ -19,7 +19,9 @@ from django.utils.encoding import force_bytes
 from django.core.mail import send_mail
 from django.views.decorators.csrf import csrf_exempt
 import json
-
+from .models import Address
+from .serializers import AddressSerializer
+from rest_framework import status
 
 
 
@@ -235,6 +237,59 @@ def reset_password(request):
 
     return Response({
         "message": "Password updated successfully"
+    })
+
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def user_details(request):
+    try:
+        profile = UserProfile.objects.get(user=request.user)
+
+        return Response({
+            "first_name": request.user.first_name,
+            "last_name": request.user.last_name,
+            "email": request.user.email,
+            "mobile": profile.mobile,
+        }, status=status.HTTP_200_OK)
+
+    except UserProfile.DoesNotExist:
+        return Response(
+            {"error": "User profile not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def update_profile(request):
+    user = request.user
+
+    try:
+        profile = UserProfile.objects.get(user=user)
+    except UserProfile.DoesNotExist:
+        return Response(
+            {"error": "Profile not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    user.first_name = request.data.get("first_name", user.first_name)
+    user.last_name = request.data.get("last_name", user.last_name)
+    user.email = request.data.get("email", user.email)
+    user.username = user.email  # Keep username and email in sync
+
+    profile.mobile = request.data.get("mobile", profile.mobile)
+
+    user.save()
+    profile.save()
+
+    return Response({
+        "message": "Profile updated successfully",
+        "first_name": user.first_name,
+        "last_name": user.last_name,
+        "email": user.email,
+        "mobile": profile.mobile,
     })
 
 
@@ -611,3 +666,181 @@ def remove_wishlist_item(request, wishlist_id):
             {"error": "Wishlist item not found"},
             status=404
         )
+    
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def add_address(request):
+
+    data = request.data.copy()
+
+    if data.get("is_default"):
+        Address.objects.filter(user=request.user).update(is_default=False)
+
+    serializer = AddressSerializer(data=data)
+
+    if serializer.is_valid():
+        serializer.save(user=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_addresses(request):
+
+    addresses = Address.objects.filter(user=request.user)
+
+    serializer = AddressSerializer(addresses, many=True)
+
+    return Response(serializer.data)
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_default_address(request):
+
+    address = Address.objects.filter(
+        user=request.user,
+        is_default=True
+    ).first()
+
+    if not address:
+        return Response(
+            {"message": "No default address found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    serializer = AddressSerializer(address)
+
+    return Response(serializer.data)
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def update_address(request, pk):
+
+    try:
+        address = Address.objects.get(
+            id=pk,
+            user=request.user
+        )
+    except Address.DoesNotExist:
+        return Response(
+            {"error": "Address not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    data = request.data.copy()
+
+    if data.get("is_default"):
+        Address.objects.filter(user=request.user).exclude(id=pk).update(is_default=False)
+
+    serializer = AddressSerializer(
+        address,
+        data=data,
+        partial=True
+    )
+
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data)
+
+    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_address(request, pk):
+
+    try:
+        address = Address.objects.get(
+            id=pk,
+            user=request.user
+        )
+    except Address.DoesNotExist:
+        return Response(
+            {"error": "Address not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    address.delete()
+
+    return Response(
+        {"message": "Address deleted successfully."},
+        status=status.HTTP_204_NO_CONTENT
+    )
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def set_default_address(request, pk):
+
+    try:
+        address = Address.objects.get(
+            id=pk,
+            user=request.user
+        )
+    except Address.DoesNotExist:
+        return Response(
+            {"error": "Address not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    Address.objects.filter(user=request.user).update(is_default=False)
+
+    address.is_default = True
+    address.save()
+
+    return Response({"message": "Default address updated successfully."})
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def my_orders(request):
+
+    orders = (
+        Order.objects
+        .prefetch_related("items__product")
+        .filter(user=request.user)
+        .order_by("-created_at")
+    )
+
+    order_list = []
+
+    for order in orders:
+
+        products = []
+
+        for item in order.items.all():
+
+            status = order.status.upper()
+
+            if status == "DELIVERED":
+                color = "bg-green-500"
+            elif status in ["SHIPPED", "IN TRANSIT", "PROCESSING"]:
+                color = "bg-blue-500"
+            elif status in ["RETURNED", "RETURNED & REFUNDED"]:
+                color = "bg-gray-400"
+            else:
+                color = "bg-yellow-500"
+
+            products.append({
+                "image": item.product.image.url if item.product.image else "",
+                "name": item.product.name,
+                "size": item.size if hasattr(item, "size") else "",
+                "qty": item.quantity,
+                "price":item.price,
+                "status": order.status.upper(),
+                "color": color,
+            })
+
+        order_list.append({
+            "id": order.id,
+            "orderNumber": f"#RK-{order.id:06d}",
+            "orderDate": order.created_at.strftime("%b %d, %Y"),
+            "totalAmount": convert_price(
+                order.total_amount,
+                order.currency
+            ),
+            "products": products,
+        })
+
+    return Response(order_list)
