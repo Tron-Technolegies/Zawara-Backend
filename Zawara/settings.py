@@ -67,11 +67,18 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-    "http://localhost:5174"
+    "http://localhost:5174",
+    "https://zawara.netlify.app",
+    "https://zawara-admin.netlify.app",
+
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True
+CSRF_TRUSTED_ORIGINS = [
+    "https://zawara.netlify.app",
+    "https://zawara-admin.netlify.app",
 
+]
 ROOT_URLCONF = 'Zawara.urls'
 
 TEMPLATES = [
