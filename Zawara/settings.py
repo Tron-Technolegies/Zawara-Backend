@@ -133,6 +133,10 @@ cloudinary.config(
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
 
 
+RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
+RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
+
+
 from datetime import timedelta
 
 REST_FRAMEWORK = {

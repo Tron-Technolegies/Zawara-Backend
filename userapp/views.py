@@ -22,6 +22,7 @@ import json
 from .models import Address
 from .serializers import AddressSerializer
 from rest_framework import status
+from .razorpay_client import client
 
 
 
@@ -491,7 +492,41 @@ def view_single_product(request, product_id):
             status=404
         )
     
+@csrf_exempt
+@require_http_methods(["GET"])
+def latest_products(request):
+    try:
+        limit = int(request.GET.get("limit", 4))
+    except ValueError:
+        limit = 4
 
+    products = (
+        Product.objects.select_related("category")
+        .order_by("-id")[:limit]
+    )
+
+    data = []
+
+    for product in products:
+        data.append({
+            "id": product.id,
+            "name": product.name,
+            "category": {
+                "id": product.category.id,
+                "name": product.category.name,
+            } if product.category else None,
+            "gender": product.gender,
+            "price": str(product.price),
+            "description": product.description,
+            "stock": product.stock,
+            "size": product.size,
+            "material": product.material,
+            "image": product.image.url if product.image else None,
+        })
+
+    return JsonResponse({
+        "products": data
+    }, status=200)
 
 from decimal import Decimal
 
@@ -666,6 +701,40 @@ def remove_cart_item(request, item_id):
     
 
 
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def update_cart_quantity(request, item_id):
+    try:
+        item = CartItem.objects.get(
+            id=item_id,
+            cart__user=request.user
+        )
+
+        quantity = int(request.data.get("quantity", 1))
+
+        if quantity < 1:
+            return Response(
+                {"error": "Quantity must be at least 1"},
+                status=400
+            )
+
+        item.quantity = quantity
+        item.save()
+
+        return Response({
+            "message": "Quantity updated",
+            "quantity": item.quantity
+        })
+
+    except CartItem.DoesNotExist:
+        return Response(
+            {"error": "Cart item not found"},
+            status=404
+        )
+    
+
+
+
 import uuid
 
 from django.shortcuts import get_object_or_404
@@ -742,7 +811,7 @@ def view_wishlist(request):
             "id": item.id,
             "product_id": item.product.id,
             "name": item.product.name,
-            "category": item.product.category.name,
+            "category": item.product.category.name if item.product.category else "Uncategorized",
             "price": float(item.product.price),
             "image": item.product.image.url if item.product.image else None,
         })
@@ -953,3 +1022,68 @@ def my_orders(request):
         })
 
     return Response(order_list)
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_order(request):
+    amount = request.data.get("amount")
+
+    payment = client.order.create({
+        "amount": int(amount) * 100,   # Convert ₹ to paise
+        "currency": "INR",
+        "payment_capture": 1,
+    })
+
+    return Response({
+        "order_id": payment["id"],
+        "amount": payment["amount"],
+        "currency": payment["currency"],
+    })
+
+
+
+    from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from .razorpay_client import client
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def verify_payment(request):
+    razorpay_order_id = request.data.get("razorpay_order_id")
+    razorpay_payment_id = request.data.get("razorpay_payment_id")
+    razorpay_signature = request.data.get("razorpay_signature")
+
+    try:
+        params_dict = {
+            "razorpay_order_id": razorpay_order_id,
+            "razorpay_payment_id": razorpay_payment_id,
+            "razorpay_signature": razorpay_signature,
+        }
+
+        # Verify payment signature
+        client.utility.verify_payment_signature(params_dict)
+
+        # ----------------------------
+        # Payment verified successfully
+        # ----------------------------
+
+        # TODO:
+        # 1. Save payment details
+        # 2. Create order
+        # 3. Reduce stock
+        # 4. Clear user's cart
+
+        return Response({
+            "success": True,
+            "message": "Payment verified successfully."
+        })
+
+    except Exception as e:
+        return Response({
+            "success": False,
+            "message": "Payment verification failed.",
+            "error": str(e)
+        }, status=400)
