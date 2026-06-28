@@ -1046,7 +1046,7 @@ def create_order(request):
     from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .razorpay_client import client
+from userapp.razorpay_client import client
 
 
 @api_view(["POST"])
