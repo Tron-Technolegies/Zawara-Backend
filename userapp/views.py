@@ -371,40 +371,39 @@ def view_products(request):
 
     if sections:
         SECTION_MAP = {
-        "none": "none",
-        "curated_red_velvet": "curated_red_velvet",
-        "red velvet": "curated_red_velvet",
+            "none": "none",
+            "curated_red_velvet": "curated_red_velvet",
+            "red velvet": "curated_red_velvet",
 
-        "curated_chanderi_silks": "curated_chanderi_silks",
-        "chanderi silks": "curated_chanderi_silks",
+            "curated_chanderi_silks": "curated_chanderi_silks",
+            "chanderi silks": "curated_chanderi_silks",
 
-        "summer_chronicles": "summer_chronicles",
-        "summer chronicles": "summer_chronicles",
+            "summer_chronicles": "summer_chronicles",
+            "summer chronicles": "summer_chronicles",
 
-        "heritage_blooms": "heritage_blooms",
-        "heritage blooms": "heritage_blooms",
-    }
+            "heritage_blooms": "heritage_blooms",
+            "heritage blooms": "heritage_blooms",
+        }
 
-    section_list = [
-        s.strip().lower()
-        for s in sections.split(",")
-        if s.strip()
-    ]
+        section_list = [
+            s.strip().lower()
+            for s in sections.split(",")
+            if s.strip()
+        ]
 
-    mapped_sections = [
-        SECTION_MAP.get(s, s)
-        for s in section_list
-    ]
+        mapped_sections = [
+            SECTION_MAP.get(s, s)
+            for s in section_list
+        ]
 
-    if len(mapped_sections) == 1:
-        products = products.filter(
-            sections__iexact=mapped_sections[0]
-        )
-    else:
-        products = products.filter(
-            sections__in=mapped_sections
-        )
-
+        if len(mapped_sections) == 1:
+            products = products.filter(
+                sections__iexact=mapped_sections[0]
+            )
+        else:
+            products = products.filter(
+                sections__in=mapped_sections
+            )
 
 
     if search:
