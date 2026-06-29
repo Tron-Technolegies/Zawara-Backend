@@ -37,6 +37,7 @@ class Product(models.Model):
     size = models.CharField(max_length=2,choices=SIZE_CHOICES)
     image = CloudinaryField("image", blank=True, null=True)
     material = models.CharField(max_length=100, blank=True, null=True)
+    is_featured = models.BooleanField(default=False)
 
 class Order(models.Model):
     STATUS_CHOICES = (

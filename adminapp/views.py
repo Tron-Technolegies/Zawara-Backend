@@ -219,6 +219,7 @@ def add_product(request):
         description = request.POST.get("description", "")
         stock = request.POST.get("stock", 0)
         image = request.FILES.get("image")
+        is_featured = request.POST.get("is_featured", "false").lower() == "true"
 
         if not all([name, category_id, gender, size, price]):
             return JsonResponse(
@@ -238,6 +239,7 @@ def add_product(request):
             description=description,
             stock=stock,
             image=image,
+            is_featured=is_featured,
         )
 
         return JsonResponse({
@@ -254,6 +256,7 @@ def add_product(request):
             "image": product.image.url if product.image else None,
             "description": product.description,
             "stock": product.stock,
+            "is_featured": product.is_featured,
         }, status=201)
 
     except Category.DoesNotExist:
@@ -261,6 +264,7 @@ def add_product(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)},status=500)
+    
 
 @require_http_methods(["GET"])
 def view_products(request):
