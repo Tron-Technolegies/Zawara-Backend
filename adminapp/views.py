@@ -314,8 +314,7 @@ def view_product(request, product_id):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-    
-    
+        
 @csrf_exempt
 @require_http_methods(["POST"])
 def update_product(request, product_id):
