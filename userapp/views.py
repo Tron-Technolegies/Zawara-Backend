@@ -337,6 +337,7 @@ def view_products(request):
     min_price = request.GET.get("min_price")
     max_price = request.GET.get("max_price")
     price = request.GET.get("price")
+    featured = request.GET.get("featured")
 
     try:
         page = int(request.GET.get("page", 1))
@@ -352,6 +353,11 @@ def view_products(request):
     products = Product.objects.select_related(
         "category"
     ).all()
+
+
+    if featured is not None:
+        featured = featured.lower() == "true"
+        products = products.filter(is_featured=featured)
 
     if category:
         if category.isdigit():
@@ -442,6 +448,7 @@ def view_products(request):
             "size": product.size,
             "material": product.material,
             "image": product.image.url if product.image else None,
+            "is_featured": product.is_featured
         })
 
     return JsonResponse({
@@ -527,6 +534,48 @@ def latest_products(request):
     return JsonResponse({
         "products": data
     }, status=200)
+
+
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def latest_featured_products(request):
+    try:
+        limit = int(request.GET.get("limit", 4))
+    except ValueError:
+        limit = 4
+
+    products = (
+        Product.objects.select_related("category")
+        .filter(is_featured=True)
+        .order_by("-id")[:limit]
+    )
+
+    data = []
+
+    for product in products:
+        data.append({
+            "id": product.id,
+            "name": product.name,
+            "category": {
+                "id": product.category.id,
+                "name": product.category.name,
+            } if product.category else None,
+            "gender": product.gender,
+            "price": str(product.price),
+            "description": product.description,
+            "stock": product.stock,
+            "size": product.size,
+            "material": product.material,
+            "image": product.image.url if product.image else None,
+            "is_featured": product.is_featured,
+        })
+
+    return JsonResponse({
+        "products": data
+    }, status=200)
+
 
 from decimal import Decimal
 
