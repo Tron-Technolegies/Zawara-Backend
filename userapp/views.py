@@ -338,6 +338,7 @@ def view_products(request):
     max_price = request.GET.get("max_price")
     price = request.GET.get("price")
     featured = request.GET.get("featured")
+    sections = request.GET.get("sections")
 
     try:
         page = int(request.GET.get("page", 1))
@@ -367,6 +368,44 @@ def view_products(request):
 
     if gender:
         products = products.filter(gender=gender)
+
+    if sections:
+        SECTION_MAP = {
+        "none": "none",
+        "curated_red_velvet": "curated_red_velvet",
+        "red velvet": "curated_red_velvet",
+
+        "curated_chanderi_silks": "curated_chanderi_silks",
+        "chanderi silks": "curated_chanderi_silks",
+
+        "summer_chronicles": "summer_chronicles",
+        "summer chronicles": "summer_chronicles",
+
+        "heritage_blooms": "heritage_blooms",
+        "heritage blooms": "heritage_blooms",
+    }
+
+    section_list = [
+        s.strip().lower()
+        for s in sections.split(",")
+        if s.strip()
+    ]
+
+    mapped_sections = [
+        SECTION_MAP.get(s, s)
+        for s in section_list
+    ]
+
+    if len(mapped_sections) == 1:
+        products = products.filter(
+            sections__iexact=mapped_sections[0]
+        )
+    else:
+        products = products.filter(
+            sections__in=mapped_sections
+        )
+
+
 
     if search:
         products = products.filter(
@@ -448,6 +487,7 @@ def view_products(request):
             "size": product.size,
             "material": product.material,
             "image": product.image.url if product.image else None,
+            "sections": product.sections,
             "is_featured": product.is_featured
         })
 
