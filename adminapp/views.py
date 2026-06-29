@@ -306,14 +306,16 @@ def view_product(request, product_id):
             "gender": product.gender,
             "price": str(product.price),
             "size": product.size,
-            "material": product.material,  
+            "material": product.material,
             "description": product.description,
             "stock": product.stock,
+            "is_featured": product.is_featured,
         })
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-
+    
+    
 @csrf_exempt
 @require_http_methods(["POST"])
 def update_product(request, product_id):
