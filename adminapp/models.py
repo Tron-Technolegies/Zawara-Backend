@@ -31,10 +31,20 @@ class Product(models.Model):
     SIZE_CHOICES = [
         ("S", "Small"),
         ("M", "Medium"),
+        ("L","Large"),
         ("XL", "Extra Large"),
     ]
 
+    SECTION_CHOICES = [
+        ("none", "None"),
+        ("curated_redvelvet", "Curated - Red Velvet"),
+        ("curated_Chanderisilks", "Curated - Chanderi Silks"),
+        ("summer_chronicles", "Summer Chronicles"),
+        ("heritage_blooms", "Heritage Blooms"),
+    ]
+
     size = models.CharField(max_length=2,choices=SIZE_CHOICES)
+    sections = models.CharField(max_length=30,choices=SECTION_CHOICES,default="none",)
     image = CloudinaryField("image", blank=True, null=True)
     material = models.CharField(max_length=100, blank=True, null=True)
     is_featured = models.BooleanField(default=False)

@@ -219,6 +219,7 @@ def add_product(request):
         description = request.POST.get("description", "")
         stock = request.POST.get("stock", 0)
         image = request.FILES.get("image")
+        sections = request.POST.get("sections", "none")
         is_featured = request.POST.get("is_featured", "false").lower() == "true"
 
         if not all([name, category_id, gender, size, price]):
@@ -239,6 +240,7 @@ def add_product(request):
             description=description,
             stock=stock,
             image=image,
+            sections=sections,
             is_featured=is_featured,
         )
 
@@ -256,6 +258,7 @@ def add_product(request):
             "image": product.image.url if product.image else None,
             "description": product.description,
             "stock": product.stock,
+            "sections":product.sections,
             "is_featured": product.is_featured,
         }, status=201)
 
@@ -287,7 +290,9 @@ def view_products(request):
             "description": product.description,
             "stock": product.stock,
             "image": product.image.url if product.image else None,
-            "is_published": True
+            "is_featured": product.is_featured,
+            "sections": product.sections,
+            # "is_published": True
         })
 
     return JsonResponse(data, safe=False)
@@ -314,6 +319,7 @@ def view_product(request, product_id):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+    
         
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -337,6 +343,16 @@ def update_product(request, product_id):
         )
         product.stock = request.POST.get("stock", product.stock)
 
+        # Featured product
+        is_featured = request.POST.get("is_featured")
+        if is_featured is not None:
+            product.is_featured = is_featured.lower() == "true"
+
+        # Homepage section
+        sections = request.POST.get("sections")
+        if sections:
+            product.sections = sections
+
         # Image update
         image = request.FILES.get("image")
         if image:
@@ -350,7 +366,7 @@ def update_product(request, product_id):
             "category": {
                 "id": product.category.id,
                 "name": product.category.name
-            },
+            } if product.category else None,
             "gender": product.gender,
             "size": product.size,
             "material": product.material,
@@ -358,6 +374,8 @@ def update_product(request, product_id):
             "description": product.description,
             "stock": product.stock,
             "image": product.image.url if product.image else None,
+            "is_featured": product.is_featured,
+            "sections": product.sections,
         })
 
     except Category.DoesNotExist:
@@ -365,7 +383,7 @@ def update_product(request, product_id):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-
+    
 @csrf_exempt
 @require_http_methods(["DELETE"])
 def delete_product(request, product_id):
