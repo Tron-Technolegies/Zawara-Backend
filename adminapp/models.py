@@ -1,8 +1,8 @@
+from django.utils import timezone
 from django.db import models
 from cloudinary.models import CloudinaryField
 
 # Create your models here.
-
 
 class Category(models.Model):
     name = models.CharField(max_length=100, unique=True)
@@ -79,5 +79,22 @@ class OrderItem(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     size = models.CharField(max_length=50)
     material = models.CharField(max_length=100)
+
+class Coupon(models.Model):
+    name = models.CharField(max_length=20)
+    description = models.TextField()
+    created_at = models.DateField(auto_now_add=True)
+
+    DISCOUNT_TYPE = (
+        ("percentage", "Percentage"),
+        ("fixed", "Fixed Amount"),
+    )
+
+    code = models.CharField(max_length=50, unique=True)
+    discount_type = models.CharField(max_length=20, choices=DISCOUNT_TYPE)
+    discount_value = models.DecimalField(max_digits=10, decimal_places=2)
+    valid_from = models.DateField(default=timezone.now)
+    valid_to = models.DateField()
+
 
 

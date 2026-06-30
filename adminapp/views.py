@@ -412,3 +412,77 @@ def dashboard(request):
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
+    
+
+
+from .models import Coupon
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def create_coupon(request):
+    data = json.loads(request.body)
+
+    Coupon.objects.create(
+        name=data.get("name"),
+        description=data.get("description"),
+        code=data.get("code"),
+        discount_type=data.get("discount_type"),
+        discount_value=data.get("discount_value"),
+        valid_from=data.get("valid_from"),
+        valid_to=data.get("valid_to"),
+    )
+
+    return JsonResponse({"message": "Coupon created successfully."}, status=201)
+
+
+@csrf_exempt
+def view_coupons(request):
+    coupons = list(Coupon.objects.all().values())
+    return JsonResponse(coupons, safe=False)
+
+
+# @csrf_exempt
+# def view_coupon(request, coupon_id):
+#     try:
+#         coupon = Coupon.objects.values().get(id=coupon_id)
+#         return JsonResponse(coupon, status=200)
+
+#     except Coupon.DoesNotExist:
+#         return JsonResponse({"error": "Coupon not found."},status=404)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def update_coupon(request, coupon_id):
+    try:
+        coupon = Coupon.objects.get(id=coupon_id)
+    except Coupon.DoesNotExist:
+        return JsonResponse({"error": "Coupon not found."},status=404)
+
+    data = json.loads(request.body)
+
+    coupon.name = data.get("name", coupon.name)
+    coupon.description = data.get("description", coupon.description)
+    coupon.code = data.get("code", coupon.code)
+    coupon.discount_type = data.get("discount_type", coupon.discount_type)
+    coupon.discount_value = data.get("discount_value", coupon.discount_value)
+    coupon.valid_from = data.get("valid_from", coupon.valid_from)
+    coupon.valid_to = data.get("valid_to", coupon.valid_to)
+
+    coupon.save()
+
+    return JsonResponse({"message": "Coupon updated successfully."},status=200)
+
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def delete_coupon(request, coupon_id):
+    try:
+        coupon = Coupon.objects.get(id=coupon_id)
+        coupon.delete()
+
+        return JsonResponse({"message": "Coupon deleted successfully."},status=200)
+
+    except Coupon.DoesNotExist:
+        return JsonResponse({"error": "Coupon not found."},status=404)
