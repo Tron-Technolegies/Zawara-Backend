@@ -10,6 +10,8 @@ urlpatterns = [
 
     path("forgot-password/",views.forgot_password, name='forgot_password'),
     path("reset-password/",views.reset_password, name='reset_password'),
+    path("change-password/",views.change_password,name=" change_password"),
+
     path('view_categories/', views.view_categories, name='view_categories'),
     path("view_products/", views.view_products, name='view_products'),
     path("view_single_product/<int:product_id>/", views.view_single_product, name='view_single_product'),
@@ -28,7 +30,7 @@ urlpatterns = [
     path("remove_wishlist_item/<int:wishlist_id>/",views.remove_wishlist_item),
     
     path("address/add/", views.add_address,name="address_add"),
-    path("address/", views.get_addresses),
+    path("address/", views.get_addresses,name="get_address"),
     path("address/default/", views.get_default_address),
     path("address/update/<int:pk>/", views.update_address),
     path("address/delete/<int:pk>/", views.delete_address),
@@ -37,4 +39,7 @@ urlpatterns = [
 
     path("create-order/",views.create_order,name="create_order"),
     path("verify-payment/",views.verify_payment,name="verify_payment"),
+
+    path("apply-coupon/",views.apply_coupon,name="apply-coupon"),
+    path("available-coupons/",views.available_coupons)
 ]

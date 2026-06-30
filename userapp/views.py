@@ -23,6 +23,7 @@ from .models import Address
 from .serializers import AddressSerializer
 from rest_framework import status
 from .razorpay_client import client
+from django.utils import timezone
 
 
 
@@ -168,9 +169,10 @@ def forgot_password(request):
         user
     )
 
+    frontend_url = settings.FRONTEND_URL
+
     reset_link = (
-        f"http://localhost:5173/resetpassword/"
-        f"{uid}/{token}/"
+        f"{frontend_url}/resetpassword/{uid}/{token}/"
     )
 
     print("UID:", uid)
@@ -238,6 +240,36 @@ def reset_password(request):
 
     return Response({
         "message": "Password updated successfully"
+    })
+
+
+
+
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    old_password = request.data.get("old_password")
+    new_password = request.data.get("new_password")
+
+    if not old_password or not new_password:
+        return Response(
+            {"error": "Both old and new passwords are required"},
+            status=400
+        )
+
+    user = request.user
+
+    if not user.check_password(old_password):
+        return Response(
+            {"error": "Current password is incorrect"},
+            status=400
+        )
+
+    user.set_password(new_password)
+    user.save()
+
+    return Response({
+        "message": "Password changed successfully"
     })
 
 
@@ -1116,6 +1148,8 @@ def my_orders(request):
 @permission_classes([IsAuthenticated])
 def create_order(request):
     amount = request.data.get("amount")
+    cart = Cart.objects.filter(user=request.user)
+    total = calculate_cart_total(cart)
 
     payment = client.order.create({
         "amount": int(amount) * 100,   # Convert ₹ to paise
@@ -1124,6 +1158,7 @@ def create_order(request):
     })
 
     return Response({
+        "key": settings.RAZORPAY_KEY_ID,
         "order_id": payment["id"],
         "amount": payment["amount"],
         "currency": payment["currency"],
@@ -1175,3 +1210,96 @@ def verify_payment(request):
             "message": "Payment verification failed.",
             "error": str(e)
         }, status=400)
+
+
+@csrf_exempt
+def apply_coupon(request):
+
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
+
+    data = json.loads(request.body)
+
+    code = data.get("code")
+    subtotal = Decimal(str(data.get("subtotal")))
+
+    try:
+        coupon = Coupon.objects.get(code=code)
+
+    except Coupon.DoesNotExist:
+        return JsonResponse(
+            {"error": "Invalid Coupon"},
+            status=404
+        )
+
+    now = timezone.now()
+
+    if coupon.valid_from > now:
+        return JsonResponse(
+            {"error": "Coupon not active yet"},
+            status=400
+        )
+
+    if coupon.valid_to < now:
+        return JsonResponse(
+            {"error": "Coupon expired"},
+            status=400
+        )
+
+    if coupon.discount_type == "percentage":
+
+        discount = (
+            subtotal *
+            coupon.discount_value
+        ) / Decimal("100")
+
+    else:
+
+        discount = coupon.discount_value
+
+    total = subtotal - discount
+
+    if total < 0:
+        total = 0
+
+    return JsonResponse({
+
+        "coupon": coupon.code,
+
+        "discount": float(discount),
+
+        "subtotal": float(subtotal),
+
+        "total": float(total),
+
+        "message": "Coupon Applied Successfully"
+
+    })
+
+
+@csrf_exempt
+def available_coupons(request):
+
+    now = timezone.now()
+
+    coupons = Coupon.objects.filter(
+        valid_from__lte=now,
+        valid_to__gte=now
+    )
+
+    data = []
+
+    for coupon in coupons:
+
+        data.append({
+
+            "id": coupon.id,
+            "name": coupon.name,
+            "description": coupon.description,
+            "code": coupon.code,
+            "discount_type": coupon.discount_type,
+            "discount_value": float(coupon.discount_value)
+
+        })
+
+    return JsonResponse(data, safe=False)
