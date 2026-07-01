@@ -1154,14 +1154,26 @@ def my_orders(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_order(request):
+    import razorpay
+    from userapp.razorpay_client import get_razorpay_client
+
     cart = Cart.objects.filter(user=request.user)
     total = calculate_cart_total(cart)
 
-    payment = client.order.create({
-        "amount": int(total * 100),   # Convert ₹ to paise
-        "currency": "INR",
-        "payment_capture": 1,
-    })
+    try:
+        razorpay_client = get_razorpay_client()
+        payment = razorpay_client.order.create({
+            "amount": int(total * 100),   # Convert ₹ to paise
+            "currency": "INR",
+            "payment_capture": 1,
+        })
+    except ValueError as e:
+        return Response({"error": str(e)}, status=500)
+    except razorpay.errors.BadRequestError as e:
+        return Response(
+            {"error": "Razorpay authentication failed. Check your API keys.", "detail": str(e)},
+            status=500,
+        )
 
     return Response({
         "key": settings.RAZORPAY_KEY_ID,
