@@ -27,11 +27,4 @@ urlpatterns = [
     # path("coupon/view/<int:coupon_id>/", views.view_coupon, name="view_coupon"),
     path("coupon/update/<int:coupon_id>/", views.update_coupon, name="view_coupon"),
     path("coupon/delete/<int:coupon_id>/", views.delete_coupon, name="delete_coupon"),
-
-
-
-
-
-
-
 ]

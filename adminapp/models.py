@@ -1,6 +1,7 @@
 from django.utils import timezone
 from django.db import models
 from cloudinary.models import CloudinaryField
+from django.contrib.auth.models import User
 
 # Create your models here.
 
@@ -57,13 +58,17 @@ class Order(models.Model):
         ("completed", "Completed"),
         ("cancelled", "Cancelled"),
     )
-    # user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
     email = models.EmailField(default="test@example.com")
     phone = models.CharField(max_length=20, default='null')
     shipping_address = models.TextField(default='null')
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    coupon_code = models.CharField(max_length=50, blank=True, null=True)
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    razorpay_order_id = models.CharField(max_length=200, blank=True, null=True)
+    razorpay_payment_id = models.CharField(max_length=200, blank=True, null=True)
+    razorpay_signature = models.CharField(max_length=300, blank=True, null=True)
     payment_status = models.CharField(max_length=20, default="pending")
-    payment_id = models.CharField(max_length=200, null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     tracking_link = models.URLField(null=True, blank=True)
     shipped_at = models.DateTimeField(null=True, blank=True)

@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAdminUser, IsAuthenticated, AllowAny
 from rest_framework.response import Response
 import re
 from .models import UserProfile,Cart, CartItem,Wishlist
-from adminapp.models import Category,Product
+from adminapp.models import Category,Product,Order,OrderItem,Coupon
 from django.contrib.auth.models import User
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -1303,3 +1303,42 @@ def available_coupons(request):
         })
 
     return JsonResponse(data, safe=False)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_orders(request):
+    try:
+        user = request.user
+        orders = Order.objects.filter(user=user).order_by('-created_at')
+        
+        orders_data = []
+        for order in orders:
+            order_items = OrderItem.objects.filter(order=order)
+            products_data = []
+            for item in order_items:
+                image_url = None
+                if item.product and item.product.image:
+                    image_url = item.product.image.url
+                
+                product_data = {
+                    "image": image_url,
+                    "name": item.product.name if item.product else "Unknown Product",
+                    "size": item.size,
+                    "qty": item.quantity,
+                    "color": "bg-black", 
+                    "status": order.get_status_display(),
+                    "price": f"₹ {item.price}"
+                }
+                products_data.append(product_data)
+                
+            orders_data.append({
+                "id": order.id,
+                "orderNumber": f"#ORD{order.id:04d}",
+                "orderDate": order.created_at.strftime("%B %d, %Y"),
+                "totalAmount": f"₹ {order.total_amount}",
+                "products": products_data
+            })
+            
+        return Response({"orders": orders_data}, status=200)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
