@@ -37,6 +37,13 @@ def get_tokens_for_user(user):
         "access": str(refresh.access_token),
     }
 
+def calculate_cart_total(cart):
+    total = 0
+    if cart.exists():
+        for item in cart.first().items.all():
+            total += item.product.price * item.quantity
+    return total
+
 
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -1147,12 +1154,11 @@ def my_orders(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_order(request):
-    amount = request.data.get("amount")
     cart = Cart.objects.filter(user=request.user)
     total = calculate_cart_total(cart)
 
     payment = client.order.create({
-        "amount": int(amount) * 100,   # Convert ₹ to paise
+        "amount": int(total * 100),   # Convert ₹ to paise
         "currency": "INR",
         "payment_capture": 1,
     })
