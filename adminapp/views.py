@@ -486,3 +486,50 @@ def delete_coupon(request, coupon_id):
 
     except Coupon.DoesNotExist:
         return JsonResponse({"error": "Coupon not found."},status=404)
+    
+
+
+from .models import Notification
+from .serializers import NotificationSerializer
+
+
+@api_view(["GET"])
+def admin_notifications(request):
+    notifications = Notification.objects.all().order_by('-created_at')
+
+    serializer = NotificationSerializer(notifications, many=True)
+
+    unread_count = Notification.objects.filter(is_read=False).count()
+
+    return Response({
+        "notifications": serializer.data,
+        "unread_count": unread_count
+    })
+
+
+@api_view(["POST"])
+def mark_notification_as_read(request, pk):
+    try:
+        notification = Notification.objects.get(id=pk)
+        notification.is_read = True
+        notification.save()
+
+        unread_count = Notification.objects.filter(is_read=False).count()
+
+        return Response({
+            "message": "Notification marked as read",
+            "unread_count": unread_count
+        })
+
+    except Notification.DoesNotExist:
+        return Response({"error": "Notification not found"}, status=404)
+
+
+@api_view(["POST"])
+def mark_all_notifications_as_read(request):
+    Notification.objects.filter(is_read=False).update(is_read=True)
+
+    return Response({
+        "message": "All notifications marked as read",
+        "unread_count": 0
+    })

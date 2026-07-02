@@ -45,6 +45,8 @@ def calculate_cart_total(cart):
     return total
 
 
+from adminapp.utils import create_admin_notification
+
 @api_view(["POST"])
 @permission_classes([AllowAny])
 def signup(request):
@@ -89,6 +91,12 @@ def signup(request):
     UserProfile.objects.create(
         user=user,
         mobile=mobile
+    )
+
+    # ✅ ADMIN NOTIFICATION (ADD THIS)
+    create_admin_notification(
+        title="New User Signup",
+        message=f"{full_name} has registered with email {email}."
     )
 
     tokens = get_tokens_for_user(user)

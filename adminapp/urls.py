@@ -27,4 +27,10 @@ urlpatterns = [
     # path("coupon/view/<int:coupon_id>/", views.view_coupon, name="view_coupon"),
     path("coupon/update/<int:coupon_id>/", views.update_coupon, name="view_coupon"),
     path("coupon/delete/<int:coupon_id>/", views.delete_coupon, name="delete_coupon"),
+
+    
+    path('notifications/', views.admin_notifications, name='admin_notifications'),
+    path('notifications/read/<int:pk>/', views.mark_notification_as_read, name='mark_notification_as_read'),
+    path('notifications/read-all/', views.mark_all_notifications_as_read, name='mark_all_notifications_as_read'),
+
 ]
