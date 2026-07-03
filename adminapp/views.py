@@ -533,3 +533,64 @@ def mark_all_notifications_as_read(request):
         "message": "All notifications marked as read",
         "unread_count": 0
     })
+
+
+
+from adminapp.models import Order
+
+
+@api_view(["GET"])
+def admin_get_orders(request):
+    try:
+        orders = (
+            Order.objects
+            .select_related("user")
+            .prefetch_related("items__product")
+            .order_by("-created_at")
+        )
+
+        orders_data = []
+
+        for order in orders:
+            products_data = []
+
+            for item in order.items.all():
+                image_url = ""
+                if item.product and item.product.image:
+                    image_url = request.build_absolute_uri(item.product.image.url)
+
+                products_data.append({
+                    "id": item.id,
+                    "productId": item.product.id if item.product else None,
+                    "image": image_url,
+                    "name": item.product.name if item.product else "Unknown Product",
+                    "size": item.size if item.size else "",
+                    "qty": item.quantity,
+                    "price": f"₹ {item.price}",
+                    "status": order.get_status_display(),
+                })
+
+            orders_data.append({
+                "id": order.id,
+                "orderNumber": f"#ORD{order.id:04d}",
+                "customerId": order.user.id if order.user else None,
+                "customerName": order.user.username if order.user else "Guest",
+                "customerEmail": order.email,
+                "phone": order.phone,
+                "shippingAddress": order.shipping_address,
+                "orderDate": order.created_at.strftime("%B %d, %Y"),
+                "totalAmount": f"₹ {order.total_amount}",
+                "paymentStatus": order.payment_status,
+                "orderStatus": order.get_status_display(),
+                "trackingNumber": order.tracking_number,
+                "trackingLink": order.tracking_link,
+                "shipmentId": order.shipment_id,
+                "razorpayOrderId": order.razorpay_order_id,
+                "razorpayPaymentId": order.razorpay_payment_id,
+                "products": products_data,
+            })
+
+        return Response({"orders": orders_data}, status=200)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)

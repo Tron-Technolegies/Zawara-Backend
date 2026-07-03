@@ -36,11 +36,11 @@ urlpatterns = [
     path("address/delete/<int:pk>/", views.delete_address),
     path("address/default/<int:pk>/", views.set_default_address),
 
-
-    path("create-order/",views.create_order,name="create_order"),
-    path("verify-payment/",views.verify_payment,name="verify_payment"),
+    path("orders/", views.get_orders, name="get_orders"),
+    path("create-order/", views.create_order, name="create_order"),
+    path("verify-payment/", views.verify_payment, name="verify_payment"),
 
     path("apply-coupon/",views.apply_coupon,name="apply-coupon"),
     path("available-coupons/",views.available_coupons),
-    path("orders/", views.get_orders, name="get_orders"),
 ]
+

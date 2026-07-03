@@ -50,6 +50,8 @@ class Product(models.Model):
     material = models.CharField(max_length=100, blank=True, null=True)
     is_featured = models.BooleanField(default=False)
 
+
+
 class Order(models.Model):
     STATUS_CHOICES = (
         ("pending", "Pending"),
@@ -82,8 +84,8 @@ class OrderItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.SET_NULL, null=True, blank=True)
     quantity = models.PositiveIntegerField(default=1)
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    size = models.CharField(max_length=50)
-    material = models.CharField(max_length=100)
+    size = models.CharField(max_length=50, blank=True, default="")
+    material = models.CharField(max_length=100, blank=True, default="")
 
 class Coupon(models.Model):
     name = models.CharField(max_length=20)

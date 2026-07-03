@@ -1105,99 +1105,205 @@ def set_default_address(request, pk):
 
     return Response({"message": "Default address updated successfully."})
 
+
+# @api_view(["GET"])
+# @permission_classes([IsAuthenticated])
+# def my_orders(request):
+#     orders = (
+#         Order.objects
+#         .prefetch_related("items__product")
+#         .filter(user=request.user)
+#         .order_by("-created_at")
+#     )
+
+#     order_list = []
+
+#     for order in orders:
+#         products = []
+
+#         for item in order.items.all():
+#             status = order.status.upper()
+
+#             if status == "COMPLETED":
+#                 color = "bg-green-500"
+#             elif status in ["SHIPPED", "PROCESSING"]:
+#                 color = "bg-blue-500"
+#             elif status == "CANCELLED":
+#                 color = "bg-red-500"
+#             else:
+#                 color = "bg-yellow-500"
+
+#             products.append({
+#                 "image": request.build_absolute_uri(item.product.image.url) if item.product and item.product.image else "",
+#                 "name": item.product.name if item.product else "Unknown Product",
+#                 "size": item.size or "",
+#                 "qty": item.quantity,
+#                 "price": f"₹ {item.price}",
+#                 "status": order.get_status_display(),
+#                 "color": color,
+#             })
+
+#         order_list.append({
+#             "id": order.id,
+#             "orderNumber": f"#RK-{order.id:06d}",
+#             "orderDate": order.created_at.strftime("%b %d, %Y"),
+#             "totalAmount": f"₹ {order.total_amount}",
+#             "products": products,
+#         })
+
+#     return Response({"orders": order_list})
+
+from decimal import Decimal
+import razorpay
+
+from django.conf import settings
+from django.db import transaction
+
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from adminapp.models import Order, OrderItem
+from userapp.models import Cart, CartItem
+from userapp.razorpay_client import get_razorpay_client
+
+
+# --------------------------------------------------
+# Helper: calculate cart total
+# --------------------------------------------------
+def calculate_cart_total(cart_items):
+    total = Decimal("0.00")
+
+    for item in cart_items:
+        if not item.product:
+            continue
+
+        product_price = item.product.price
+        total += Decimal(str(product_price)) * item.quantity
+
+    return total
+
+
+# --------------------------------------------------
+# GET ORDERS
+# --------------------------------------------------
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def my_orders(request):
+def get_orders(request):
+    try:
+        user = request.user
+        orders = (
+            Order.objects.filter(user=user)
+            .prefetch_related("items__product")
+            .order_by("-created_at")
+        )
 
-    orders = (
-        Order.objects
-        .prefetch_related("items__product")
-        .filter(user=request.user)
-        .order_by("-created_at")
-    )
+        orders_data = []
 
-    order_list = []
+        for order in orders:
+            products_data = []
 
-    for order in orders:
+            for item in order.items.all():
+                image_url = None
+                if item.product and getattr(item.product, "image", None):
+                    try:
+                        image_url = item.product.image.url
+                    except Exception:
+                        image_url = None
 
-        products = []
+                product_data = {
+                    "image": image_url,
+                    "name": item.product.name if item.product else "Unknown Product",
+                    "size": item.size,
+                    "qty": item.quantity,
+                    "color": "bg-black",
+                    "status": order.get_status_display(),
+                    "price": f"₹ {item.price}",
+                }
+                products_data.append(product_data)
 
-        for item in order.items.all():
-
-            status = order.status.upper()
-
-            if status == "DELIVERED":
-                color = "bg-green-500"
-            elif status in ["SHIPPED", "IN TRANSIT", "PROCESSING"]:
-                color = "bg-blue-500"
-            elif status in ["RETURNED", "RETURNED & REFUNDED"]:
-                color = "bg-gray-400"
-            else:
-                color = "bg-yellow-500"
-
-            products.append({
-                "image": item.product.image.url if item.product.image else "",
-                "name": item.product.name,
-                "size": item.size if hasattr(item, "size") else "",
-                "qty": item.quantity,
-                "price":item.price,
-                "status": order.status.upper(),
-                "color": color,
+            orders_data.append({
+                "id": order.id,
+                "orderNumber": f"#ORD{order.id:04d}",
+                "orderDate": order.created_at.strftime("%B %d, %Y"),
+                "totalAmount": f"₹ {order.total_amount}",
+                "products": products_data,
             })
 
-        order_list.append({
-            "id": order.id,
-            "orderNumber": f"#RK-{order.id:06d}",
-            "orderDate": order.created_at.strftime("%b %d, %Y"),
-            "totalAmount": convert_price(
-                order.total_amount,
-                order.currency
-            ),
-            "products": products,
-        })
+        return Response({"orders": orders_data}, status=200)
 
-    return Response(order_list)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 
 
+# --------------------------------------------------
+# CREATE RAZORPAY ORDER
+# --------------------------------------------------
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def create_order(request):
-    import razorpay
-    from userapp.razorpay_client import get_razorpay_client
-
-    cart = Cart.objects.filter(user=request.user)
-    total = calculate_cart_total(cart)
-
     try:
+        user = request.user
+
+        # get cart
+        cart = Cart.objects.filter(user=user).first()
+        if not cart:
+            return Response({"error": "Cart not found."}, status=400)
+
+        # get cart items
+        cart_items = CartItem.objects.filter(cart=cart).select_related("product")
+        if not cart_items.exists():
+            return Response({"error": "Cart is empty."}, status=400)
+
+        subtotal = calculate_cart_total(cart_items)
+
+        coupon_code = (request.data.get("coupon_code") or "").strip()
+        discount_amount = Decimal("0.00")
+
+        # -------------------------------
+        # Add coupon logic here if needed
+        # Example:
+        # if coupon_code == "SAVE100":
+        #     discount_amount = Decimal("100.00")
+        # -------------------------------
+
+        final_total = subtotal - discount_amount
+        if final_total < 0:
+            final_total = Decimal("0.00")
+
         razorpay_client = get_razorpay_client()
         payment = razorpay_client.order.create({
-            "amount": int(total * 100),   # Convert ₹ to paise
+            "amount": int(final_total * 100),   # rupees to paise
             "currency": "INR",
             "payment_capture": 1,
         })
-    except ValueError as e:
-        return Response({"error": str(e)}, status=500)
+
+        return Response({
+            "key": settings.RAZORPAY_KEY_ID,
+            "order_id": payment["id"],
+            "amount": payment["amount"],
+            "currency": payment["currency"],
+            "subtotal": str(subtotal),
+            "discount_amount": str(discount_amount),
+            "coupon_code": coupon_code,
+            "final_total": str(final_total),
+        }, status=200)
+
     except razorpay.errors.BadRequestError as e:
         return Response(
-            {"error": "Razorpay authentication failed. Check your API keys.", "detail": str(e)},
+            {
+                "error": "Razorpay authentication failed. Check your API keys.",
+                "detail": str(e),
+            },
             status=500,
         )
-
-    return Response({
-        "key": settings.RAZORPAY_KEY_ID,
-        "order_id": payment["id"],
-        "amount": payment["amount"],
-        "currency": payment["currency"],
-    })
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 
 
-
-    from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
-from userapp.razorpay_client import client
-
-
+# --------------------------------------------------
+# VERIFY PAYMENT + CREATE ORDER
+# --------------------------------------------------
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def verify_payment(request):
@@ -1205,30 +1311,119 @@ def verify_payment(request):
     razorpay_payment_id = request.data.get("razorpay_payment_id")
     razorpay_signature = request.data.get("razorpay_signature")
 
+    email = request.data.get("email") or request.user.email or "test@example.com"
+    phone = request.data.get("phone") or "null"
+    shipping_address = request.data.get("shipping_address") or "Address not provided"
+
+    coupon_code = (request.data.get("coupon_code") or "").strip()
+    discount_amount = Decimal(str(request.data.get("discount_amount", 0) or 0))
+
+    if not razorpay_order_id or not razorpay_payment_id or not razorpay_signature:
+        return Response({
+            "success": False,
+            "message": "Missing Razorpay payment details."
+        }, status=400)
+
     try:
+        # Verify Razorpay signature
         params_dict = {
             "razorpay_order_id": razorpay_order_id,
             "razorpay_payment_id": razorpay_payment_id,
             "razorpay_signature": razorpay_signature,
         }
 
-        # Verify payment signature
-        client.utility.verify_payment_signature(params_dict)
+        razorpay_client = get_razorpay_client()
+        razorpay_client.utility.verify_payment_signature(params_dict)
 
-        # ----------------------------
-        # Payment verified successfully
-        # ----------------------------
+        user = request.user
 
-        # TODO:
-        # 1. Save payment details
-        # 2. Create order
-        # 3. Reduce stock
-        # 4. Clear user's cart
+        # get cart
+        cart = Cart.objects.filter(user=user).first()
+        if not cart:
+            return Response({
+                "success": False,
+                "message": "Cart not found."
+            }, status=400)
+
+        # get cart items
+        cart_items = CartItem.objects.filter(cart=cart).select_related("product")
+        if not cart_items.exists():
+            return Response({
+                "success": False,
+                "message": "Cart is empty."
+            }, status=400)
+
+        # Prevent duplicate order creation
+        existing_order = Order.objects.filter(
+            razorpay_order_id=razorpay_order_id,
+            razorpay_payment_id=razorpay_payment_id
+        ).first()
+
+        if existing_order:
+            return Response({
+                "success": True,
+                "message": "Order already created.",
+                "order_id": existing_order.id
+            }, status=200)
+
+        subtotal = Decimal("0.00")
+        for item in cart_items:
+            if not item.product:
+                continue
+
+            product_price = item.product.price
+            subtotal += Decimal(str(product_price)) * item.quantity
+
+        total_amount = subtotal - discount_amount
+        if total_amount < 0:
+            total_amount = Decimal("0.00")
+
+        with transaction.atomic():
+            order = Order.objects.create(
+                user=user,
+                email=email,
+                phone=phone,
+                shipping_address=shipping_address,
+                total_amount=total_amount,
+                coupon_code=coupon_code if coupon_code else None,
+                discount_amount=discount_amount,
+                razorpay_order_id=razorpay_order_id,
+                razorpay_payment_id=razorpay_payment_id,
+                razorpay_signature=razorpay_signature,
+                payment_status="paid",
+                status="processing",
+            )
+
+            for item in cart_items:
+                if not item.product:
+                    continue
+
+                product_price = item.product.price
+
+                OrderItem.objects.create(
+                    order=order,
+                    product=item.product,
+                    quantity=item.quantity,
+                    price=product_price,
+                    size=item.size or "",
+                    material=item.product.material or "",
+                )
+
+                # stock update
+                if item.product.stock is not None:
+                    item.product.stock -= item.quantity
+                    if item.product.stock < 0:
+                        item.product.stock = 0
+                    item.product.save()
+
+            # clear cart after successful order creation
+            cart_items.delete()
 
         return Response({
             "success": True,
-            "message": "Payment verified successfully."
-        })
+            "message": "Payment verified and order created successfully.",
+            "order_id": order.id
+        }, status=200)
 
     except Exception as e:
         return Response({
@@ -1236,6 +1431,7 @@ def verify_payment(request):
             "message": "Payment verification failed.",
             "error": str(e)
         }, status=400)
+    
 
 
 @csrf_exempt
@@ -1330,41 +1526,4 @@ def available_coupons(request):
 
     return JsonResponse(data, safe=False)
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_orders(request):
-    try:
-        user = request.user
-        orders = Order.objects.filter(user=user).order_by('-created_at')
-        
-        orders_data = []
-        for order in orders:
-            order_items = OrderItem.objects.filter(order=order)
-            products_data = []
-            for item in order_items:
-                image_url = None
-                if item.product and item.product.image:
-                    image_url = item.product.image.url
-                
-                product_data = {
-                    "image": image_url,
-                    "name": item.product.name if item.product else "Unknown Product",
-                    "size": item.size,
-                    "qty": item.quantity,
-                    "color": "bg-black", 
-                    "status": order.get_status_display(),
-                    "price": f"₹ {item.price}"
-                }
-                products_data.append(product_data)
-                
-            orders_data.append({
-                "id": order.id,
-                "orderNumber": f"#ORD{order.id:04d}",
-                "orderDate": order.created_at.strftime("%B %d, %Y"),
-                "totalAmount": f"₹ {order.total_amount}",
-                "products": products_data
-            })
-            
-        return Response({"orders": orders_data}, status=200)
-    except Exception as e:
-        return Response({"error": str(e)}, status=500)
+
