@@ -140,7 +140,7 @@ def view_categories(request):
 
     categories = Category.objects.filter(
         Q(name__icontains=search)
-    ).order_by("priority")
+    ).order_by("-id")
 
     data = [
         {
@@ -707,6 +707,8 @@ def checkout_summary(request):
         "total": str(total),
     })
 
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def add_to_cart(request):
@@ -1080,7 +1082,7 @@ def delete_address(request, pk):
 
     return Response(
         {"message": "Address deleted successfully."},
-        status=status.HTTP_204_NO_CONTENT
+        status=status.HTTP_200_OK
     )
 
 @api_view(["PATCH"])
@@ -1187,6 +1189,7 @@ def calculate_cart_total(cart_items):
 # --------------------------------------------------
 # GET ORDERS
 # --------------------------------------------------
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_orders(request):
@@ -1211,22 +1214,38 @@ def get_orders(request):
                     except Exception:
                         image_url = None
 
-                product_data = {
+                products_data.append({
                     "image": image_url,
                     "name": item.product.name if item.product else "Unknown Product",
                     "size": item.size,
                     "qty": item.quantity,
-                    "color": "bg-black",
-                    "status": order.get_status_display(),
-                    "price": f"₹ {item.price}",
-                }
-                products_data.append(product_data)
+                    "price": str(item.price),
+                    "total": str(item.price * item.quantity),
+                })
+
+            # If you have address fields directly in Order model, use them here
+            shipping_address = {
+                "full_name": getattr(order, "full_name", user.get_full_name() or user.username),
+                "phone": getattr(order, "phone", ""),
+                "email": getattr(order, "email", user.email),
+                "address_line_1": getattr(order, "address_line_1", ""),
+                "address_line_2": getattr(order, "address_line_2", ""),
+                "city": getattr(order, "city", ""),
+                "state": getattr(order, "state", ""),
+                "postal_code": getattr(order, "postal_code", ""),
+                "country": getattr(order, "country", "India"),
+            }
 
             orders_data.append({
                 "id": order.id,
                 "orderNumber": f"#ORD{order.id:04d}",
                 "orderDate": order.created_at.strftime("%B %d, %Y"),
-                "totalAmount": f"₹ {order.total_amount}",
+                "totalAmount": str(order.total_amount),
+                "status": order.get_status_display(),
+                "paymentMethod": getattr(order, "payment_method", "Online Payment"),
+                "subtotal": str(getattr(order, "subtotal", order.total_amount)),
+                "discount": str(getattr(order, "discount_amount", 0)),
+                "shipping_address": shipping_address,
                 "products": products_data,
             })
 
@@ -1234,8 +1253,6 @@ def get_orders(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-
-
 # --------------------------------------------------
 # CREATE RAZORPAY ORDER
 # --------------------------------------------------

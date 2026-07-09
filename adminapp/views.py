@@ -271,7 +271,7 @@ def add_product(request):
 
 @require_http_methods(["GET"])
 def view_products(request):
-    products = Product.objects.select_related("category")
+    products = Product.objects.select_related("category").order_by("id")
 
     data = []
 
@@ -399,20 +399,177 @@ def delete_product(request, product_id):
     except Exception as e:
         return JsonResponse({"error": str(e)},status=500)
 
+from django.http import JsonResponse
+from django.db.models import Sum
+from django.utils import timezone
+from datetime import timedelta
+from .models import Product, Category, Order, OrderItem
+
 
 def dashboard(request):
     try:
         total_products = Product.objects.count()
         total_categories = Category.objects.count()
+        total_orders = Order.objects.count()
+
+        # =========================
+        # Recent Orders
+        # =========================
+        recent_orders = []
+        orders = Order.objects.all().order_by("-id")[:5]
+
+        for order in orders:
+            items = OrderItem.objects.filter(order=order).select_related("product")
+            product_names = []
+
+            for item in items:
+                if item.product:
+                    product_names.append(item.product.name)
+
+            recent_orders.append({
+                "order_id": order.id,
+                "products": ", ".join(product_names),
+                "username": order.user.username if order.user else None,
+                "status": order.status,
+                "total_amount": str(order.total_amount),
+            })
+
+        # =========================
+        # Top Sold Products
+        # =========================
+        top_products_qs = (
+            OrderItem.objects
+            .filter(product__isnull=False)
+            .values("product")
+            .annotate(total_sold=Sum("quantity"))
+            .order_by("-total_sold", "product")[:5]
+        )
+
+        top_products = []
+        for item in top_products_qs:
+            product = Product.objects.filter(id=item["product"]).first()
+
+            if product:
+                image_url = None
+
+                if product.image:
+                    try:
+                        image_url = product.image.url
+                    except Exception:
+                        image_url = str(product.image)
+
+                top_products.append({
+                    "id": product.id,
+                    "name": product.name,
+                    "image": image_url,
+                    "sold": item["total_sold"]
+                })
+
+        # =========================
+        # Sales Overview - Last 7 Days
+        # =========================
+        today = timezone.now().date()
+        start_date = today - timedelta(days=6)
+
+        last_7_days_orders = Order.objects.filter(
+            created_at__date__gte=start_date,
+            created_at__date__lte=today
+        )
+
+        total_revenue = last_7_days_orders.aggregate(
+            total=Sum("total_amount")
+        )["total"] or 0
+
+        orders_count = last_7_days_orders.count()
+
+        avg_order_value = 0
+        if orders_count > 0:
+            avg_order_value = round(float(total_revenue) / orders_count, 2)
+
+        refunded_orders = last_7_days_orders.filter(status__iexact="refunded")
+        refunds = refunded_orders.aggregate(
+            total=Sum("total_amount")
+        )["total"] or 0
+
+        # =========================
+        # Previous 7 Days - for growth %
+        # =========================
+        prev_start = start_date - timedelta(days=7)
+        prev_end = start_date - timedelta(days=1)
+
+        prev_7_days_orders = Order.objects.filter(
+            created_at__date__gte=prev_start,
+            created_at__date__lte=prev_end
+        )
+
+        prev_total_revenue = prev_7_days_orders.aggregate(
+            total=Sum("total_amount")
+        )["total"] or 0
+
+        prev_orders_count = prev_7_days_orders.count()
+
+        prev_avg_order_value = 0
+        if prev_orders_count > 0:
+            prev_avg_order_value = round(float(prev_total_revenue) / prev_orders_count, 2)
+
+        prev_refunds = prev_7_days_orders.filter(status__iexact="refunded").aggregate(
+            total=Sum("total_amount")
+        )["total"] or 0
+
+        def calculate_growth(current, previous):
+            current = float(current or 0)
+            previous = float(previous or 0)
+
+            if previous == 0:
+                return 100.0 if current > 0 else 0.0
+
+            return round(((current - previous) / previous) * 100, 1)
+
+        growth_revenue = calculate_growth(total_revenue, prev_total_revenue)
+        growth_orders = calculate_growth(orders_count, prev_orders_count)
+        growth_avg_order = calculate_growth(avg_order_value, prev_avg_order_value)
+        growth_refunds = calculate_growth(refunds, prev_refunds)
+
+        # =========================
+        # Chart Data for Last 7 Days
+        # =========================
+        chart_data = []
+
+        for i in range(7):
+            day = start_date + timedelta(days=i)
+
+            day_total = Order.objects.filter(
+                created_at__date=day
+            ).aggregate(total=Sum("total_amount"))["total"] or 0
+
+            chart_data.append({
+                "day": day.strftime("%b %d"),
+                "sales": float(day_total)
+            })
+
+        sales_overview = {
+            "total_revenue": round(float(total_revenue), 2),
+            "orders": orders_count,
+            "avg_order_value": avg_order_value,
+            "refunds": round(float(refunds), 2),
+            "growth_revenue": growth_revenue,
+            "growth_orders": growth_orders,
+            "growth_avg_order": growth_avg_order,
+            "growth_refunds": growth_refunds,
+            "chart_data": chart_data
+        }
 
         return JsonResponse({
             "total_products": total_products,
             "total_categories": total_categories,
+            "total_orders": total_orders,
+            "recent_orders": recent_orders,
+            "top_products": top_products,
+            "sales_overview": sales_overview
         })
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=500)
-    
 
 
 from .models import Coupon
@@ -495,11 +652,9 @@ from .serializers import NotificationSerializer
 
 @api_view(["GET"])
 def admin_notifications(request):
-    notifications = Notification.objects.all().order_by('-created_at')
-
+    notifications = Notification.objects.all().order_by("-created_at")
     serializer = NotificationSerializer(notifications, many=True)
-
-    unread_count = Notification.objects.filter(is_read=False).count()
+    unread_count = notifications.count()   # since unread ones are the ones still موجود
 
     return Response({
         "notifications": serializer.data,
@@ -511,15 +666,13 @@ def admin_notifications(request):
 def mark_notification_as_read(request, pk):
     try:
         notification = Notification.objects.get(id=pk)
-        notification.is_read = True
-        notification.save()
-
-        unread_count = Notification.objects.filter(is_read=False).count()
-
+        # delete notification when admin reads it
+        notification.delete()
+        unread_count = Notification.objects.count()
         return Response({
-            "message": "Notification marked as read",
+            "message": "Notification deleted after reading",
             "unread_count": unread_count
-        })
+        }, status=200)
 
     except Notification.DoesNotExist:
         return Response({"error": "Notification not found"}, status=404)
@@ -527,17 +680,16 @@ def mark_notification_as_read(request, pk):
 
 @api_view(["POST"])
 def mark_all_notifications_as_read(request):
-    Notification.objects.filter(is_read=False).update(is_read=True)
+    # delete all notifications instead of marking as read
+    Notification.objects.all().delete()
 
     return Response({
-        "message": "All notifications marked as read",
+        "message": "All notifications deleted",
         "unread_count": 0
-    })
-
+    }, status=200)
 
 
 from adminapp.models import Order
-
 
 @api_view(["GET"])
 def admin_get_orders(request):
@@ -555,19 +707,10 @@ def admin_get_orders(request):
             products_data = []
 
             for item in order.items.all():
-                image_url = ""
-                if item.product and item.product.image:
-                    image_url = request.build_absolute_uri(item.product.image.url)
-
                 products_data.append({
-                    "id": item.id,
-                    "productId": item.product.id if item.product else None,
-                    "image": image_url,
                     "name": item.product.name if item.product else "Unknown Product",
-                    "size": item.size if item.size else "",
                     "qty": item.quantity,
-                    "price": f"₹ {item.price}",
-                    "status": order.get_status_display(),
+                    "size": item.size if item.size else "",
                 })
 
             orders_data.append({
