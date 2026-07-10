@@ -668,6 +668,58 @@ from decimal import Decimal
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def checkout_summary(request):
+    product_id = request.query_params.get("product_id")
+    if product_id:
+        try:
+            product = Product.objects.get(id=product_id)
+        except Product.DoesNotExist:
+            return Response(
+                {"error": "Product not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        size = request.query_params.get("size") or product.size or ""
+        try:
+            quantity = int(request.query_params.get("quantity") or 1)
+        except ValueError:
+            quantity = 1
+
+        if product.stock <= 0:
+            return Response(
+                {"error": "Product is out of stock"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if quantity > product.stock:
+            return Response(
+                {"error": f"Only {product.stock} items left in stock."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        line_total = product.price * quantity
+        subtotal = line_total
+        shipping = Decimal("0.00")
+        total = subtotal + shipping
+
+        items = [{
+            "id": product.id,
+            "image": request.build_absolute_uri(
+                product.image.url
+            ) if product.image else "",
+            "name": product.name,
+            "size": size,
+            "quantity": quantity,
+            "price": str(product.price),
+            "total": str(line_total),
+        }]
+
+        return Response({
+            "items": items,
+            "subtotal": str(subtotal),
+            "shipping": str(shipping),
+            "total": str(total),
+        })
+
     try:
         cart = Cart.objects.get(user=request.user)
     except Cart.DoesNotExist:
@@ -680,6 +732,18 @@ def checkout_summary(request):
     subtotal = Decimal("0.00")
 
     for item in cart.items.select_related("product").all():
+
+        if item.product.stock <= 0:
+            return Response(
+                {"error": f"{item.product.name} is out of stock. Please remove it from your cart before checking out."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if item.quantity > item.product.stock:
+            return Response(
+                {"error": f"Requested quantity for {item.product.name} exceeds available stock ({item.product.stock})."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         line_total = item.product.price * item.quantity
         subtotal += line_total
@@ -694,10 +758,10 @@ def checkout_summary(request):
             "quantity": item.quantity,
             "price": str(item.product.price),
             "total": str(line_total),
+            "stock": item.product.stock,
         })
 
     shipping = Decimal("0.00")
-
     total = subtotal + shipping
 
     return Response({
@@ -797,8 +861,10 @@ def view_cart(request):
                     else None
                 ),
                 "size": item.size,
+                "product_size": item.product.size,
                 "quantity": item.quantity,
                 "total": total,
+                "stock": item.product.stock,
             })
 
         return JsonResponse({
@@ -847,7 +913,8 @@ def update_cart_quantity(request, item_id):
             cart__user=request.user
         )
 
-        quantity = int(request.data.get("quantity", 1))
+        quantity = int(request.data.get("quantity", item.quantity))
+        size = request.data.get("size", item.size)
 
         if quantity < 1:
             return Response(
@@ -855,12 +922,20 @@ def update_cart_quantity(request, item_id):
                 status=400
             )
 
+        if quantity > item.product.stock:
+            return Response(
+                {"error": f"Only {item.product.stock} items left in stock."},
+                status=400
+            )
+
         item.quantity = quantity
+        item.size = size
         item.save()
 
         return Response({
-            "message": "Quantity updated",
-            "quantity": item.quantity
+            "message": "Cart item updated",
+            "quantity": item.quantity,
+            "size": item.size
         })
 
     except CartItem.DoesNotExist:
@@ -951,6 +1026,7 @@ def view_wishlist(request):
             "category": item.product.category.name if item.product.category else "Uncategorized",
             "price": float(item.product.price),
             "image": item.product.image.url if item.product.image else None,
+            "stock": item.product.stock,
         })
 
     return JsonResponse({
@@ -1261,18 +1337,44 @@ def get_orders(request):
 def create_order(request):
     try:
         user = request.user
+        product_id = request.data.get("product_id")
 
-        # get cart
-        cart = Cart.objects.filter(user=user).first()
-        if not cart:
-            return Response({"error": "Cart not found."}, status=400)
+        if product_id:
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                return Response({"error": "Product not found."}, status=404)
 
-        # get cart items
-        cart_items = CartItem.objects.filter(cart=cart).select_related("product")
-        if not cart_items.exists():
-            return Response({"error": "Cart is empty."}, status=400)
+            try:
+                quantity = int(request.data.get("quantity") or 1)
+            except ValueError:
+                quantity = 1
 
-        subtotal = calculate_cart_total(cart_items)
+            if product.stock <= 0:
+                return Response({"error": "Product is out of stock."}, status=400)
+
+            if quantity > product.stock:
+                return Response({"error": f"Only {product.stock} items left in stock."}, status=400)
+
+            subtotal = product.price * quantity
+        else:
+            # get cart
+            cart = Cart.objects.filter(user=user).first()
+            if not cart:
+                return Response({"error": "Cart not found."}, status=400)
+
+            # get cart items
+            cart_items = CartItem.objects.filter(cart=cart).select_related("product")
+            if not cart_items.exists():
+                return Response({"error": "Cart is empty."}, status=400)
+
+            for item in cart_items:
+                if item.product.stock <= 0:
+                    return Response({"error": f"{item.product.name} is out of stock."}, status=400)
+                if item.quantity > item.product.stock:
+                    return Response({"error": f"Requested quantity for {item.product.name} exceeds available stock ({item.product.stock})."}, status=400)
+
+            subtotal = calculate_cart_total(cart_items)
 
         coupon_code = (request.data.get("coupon_code") or "").strip()
         discount_amount = Decimal("0.00")
@@ -1353,6 +1455,90 @@ def verify_payment(request):
         razorpay_client.utility.verify_payment_signature(params_dict)
 
         user = request.user
+        product_id = request.data.get("product_id")
+
+        if product_id:
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                return Response({
+                    "success": False,
+                    "message": "Product not found."
+                }, status=400)
+
+            size = request.data.get("size") or product.size or ""
+            try:
+                quantity = int(request.data.get("quantity") or 1)
+            except ValueError:
+                quantity = 1
+
+            if product.stock <= 0:
+                return Response({
+                    "success": False,
+                    "message": "Product is out of stock."
+                }, status=400)
+
+            if quantity > product.stock:
+                return Response({
+                    "success": False,
+                    "message": f"Only {product.stock} items left in stock."
+                }, status=400)
+
+            subtotal = product.price * quantity
+            total_amount = subtotal - discount_amount
+            if total_amount < 0:
+                total_amount = Decimal("0.00")
+
+            # Prevent duplicate order creation
+            existing_order = Order.objects.filter(
+                razorpay_order_id=razorpay_order_id,
+                razorpay_payment_id=razorpay_payment_id
+            ).first()
+
+            if existing_order:
+                return Response({
+                    "success": True,
+                    "message": "Order already created.",
+                    "order_id": existing_order.id
+                }, status=200)
+
+            with transaction.atomic():
+                order = Order.objects.create(
+                    user=user,
+                    email=email,
+                    phone=phone,
+                    shipping_address=shipping_address,
+                    total_amount=total_amount,
+                    coupon_code=coupon_code if coupon_code else None,
+                    discount_amount=discount_amount,
+                    razorpay_order_id=razorpay_order_id,
+                    razorpay_payment_id=razorpay_payment_id,
+                    razorpay_signature=razorpay_signature,
+                    payment_status="paid",
+                    status="processing",
+                )
+
+                OrderItem.objects.create(
+                    order=order,
+                    product=product,
+                    quantity=quantity,
+                    price=product.price,
+                    size=size,
+                    material=product.material or "",
+                )
+
+                # stock update
+                if product.stock is not None:
+                    product.stock -= quantity
+                    if product.stock < 0:
+                        product.stock = 0
+                    product.save()
+
+            return Response({
+                "success": True,
+                "message": "Payment verified and order created successfully.",
+                "order_id": order.id
+            }, status=200)
 
         # get cart
         cart = Cart.objects.filter(user=user).first()
@@ -1387,6 +1573,18 @@ def verify_payment(request):
         for item in cart_items:
             if not item.product:
                 continue
+
+            if item.product.stock <= 0:
+                return Response({
+                    "success": False,
+                    "message": f"{item.product.name} is out of stock."
+                }, status=400)
+
+            if item.quantity > item.product.stock:
+                return Response({
+                    "success": False,
+                    "message": f"Requested quantity for {item.product.name} exceeds available stock ({item.product.stock})."
+                }, status=400)
 
             product_price = item.product.price
             subtotal += Decimal(str(product_price)) * item.quantity
