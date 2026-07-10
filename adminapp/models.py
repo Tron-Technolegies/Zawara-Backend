@@ -44,7 +44,7 @@ class Product(models.Model):
         ("heritage_blooms", "Heritage Blooms"),
     ]
 
-    size = models.CharField(max_length=2,choices=SIZE_CHOICES)
+    size = models.CharField(max_length=50,choices=SIZE_CHOICES)
     sections = models.CharField(max_length=30,choices=SECTION_CHOICES,default="none",)
     image = CloudinaryField("image", blank=True, null=True)
     material = models.CharField(max_length=100, blank=True, null=True)
