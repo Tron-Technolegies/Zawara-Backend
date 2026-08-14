@@ -34,5 +34,5 @@ urlpatterns = [
     path('notifications/read-all/', views.mark_all_notifications_as_read, name='mark_all_notifications_as_read'),
 
     path("admin_get_orders/", views.admin_get_orders, name="get_orders"),
-
+    path("sales-history/",views.admin_get_sales_history,name="admin-sales-history"),
 ]
