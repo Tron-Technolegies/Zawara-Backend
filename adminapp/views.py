@@ -13,7 +13,7 @@ from rest_framework import status
 from rest_framework_simplejwt.tokens import RefreshToken
 
 User = get_user_model()
-
+@csrf_exempt
 @api_view(["POST"])
 def admin_login(request):
     email = request.data.get("email")
@@ -737,3 +737,150 @@ def admin_get_orders(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from adminapp.models import Order
+
+
+@api_view(["GET"])
+def admin_get_sales_history(request):
+    try:
+        # Only paid + completed orders are considered sales
+        # orders = (
+        #     Order.objects
+        #     .filter(
+        #         status="completed",
+        #         payment_status="paid"
+        #     )
+        orders = (
+            Order.objects
+                .filter(payment_status="paid")
+            .select_related("user")
+            .prefetch_related("items__product")
+            .order_by("-created_at")
+        )
+
+        sales_data = []
+
+        for order in orders:
+
+            products_data = []
+
+            for item in order.items.all():
+
+                products_data.append({
+                    "productId": item.product.id if item.product else None,
+                    "productName": (
+                        item.product.name
+                        if item.product
+                        else "Unknown Product"
+                    ),
+                    "quantity": item.quantity,
+                    "unitPrice": str(item.price),
+                    "total": str(item.price * item.quantity),
+                    "size": item.size,
+                    "material": item.material,
+                })
+
+            sales_data.append({
+                "saleId": order.id,
+                "orderNumber": f"#ORD{order.id:04d}",
+
+                # Customer information
+                "customerId": (
+                    order.user.id
+                    if order.user
+                    else None
+                ),
+                "customerName": (
+                    order.user.username
+                    if order.user
+                    else "Guest"
+                ),
+                "customerEmail": order.email,
+                "phone": order.phone,
+
+                # Order information
+                "orderDate": order.created_at.strftime(
+                    "%B %d, %Y"
+                ),
+
+                "orderDateTime": order.created_at.isoformat(),
+
+                # Payment information
+                "paymentStatus": order.payment_status,
+                "razorpayOrderId": order.razorpay_order_id,
+                "razorpayPaymentId": order.razorpay_payment_id,
+
+                # Amount
+                "totalAmount": str(order.total_amount),
+
+                # Products
+                "products": products_data,
+            })
+
+        return Response({
+            "success": True,
+            "count": len(sales_data),
+            "sales": sales_data
+        }, status=200)
+
+    except Exception as e:
+        return Response({
+            "success": False,
+            "error": str(e)
+        }, status=500)
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from adminapp.models import Order
+
+
+@api_view(["POST"])
+def admin_update_order_status(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id)
+
+        new_status = request.data.get("orderStatus")
+
+        status_mapping = {
+            "Pending": "pending",
+            "Processing": "processing",
+            "Shipped": "shipped",
+            "Completed": "completed",
+            "Cancelled": "cancelled",
+        }
+
+        if new_status not in status_mapping:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Invalid order status",
+                    "received_status": new_status,
+                },
+                status=400,
+            )
+
+        order.status = status_mapping[new_status]
+        order.save()
+
+        return Response(
+            {
+                "success": True,
+                "message": "Order status updated successfully",
+                "order_id": order.id,
+                "orderStatus": order.get_status_display(),
+            },
+            status=200,
+        )
+
+    except Order.DoesNotExist:
+        return Response(
+            {
+                "success": False,
+                "message": "Order not found",
+            },
+            status=404,
+        )

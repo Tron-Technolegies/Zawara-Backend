@@ -673,10 +673,7 @@ def checkout_summary(request):
         try:
             product = Product.objects.get(id=product_id)
         except Product.DoesNotExist:
-            return Response(
-                {"error": "Product not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"error": "Product not found"},status=status.HTTP_404_NOT_FOUND)
 
         size = request.query_params.get("size") or product.size or ""
         try:
