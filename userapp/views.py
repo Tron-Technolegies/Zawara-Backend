@@ -1146,11 +1146,14 @@ def get_addresses(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_default_address(request):
-
     address = Address.objects.filter(
         user=request.user,
         is_default=True
     ).first()
+
+    if not address:
+        # Fallback to the latest address if no address is explicitly marked default
+        address = Address.objects.filter(user=request.user).order_by("-id").first()
 
     if not address:
         return Response(
@@ -1159,7 +1162,6 @@ def get_default_address(request):
         )
 
     serializer = AddressSerializer(address)
-
     return Response(serializer.data)
 
 
