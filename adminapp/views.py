@@ -831,3 +831,56 @@ def admin_get_sales_history(request):
             "success": False,
             "error": str(e)
         }, status=500)
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from adminapp.models import Order
+
+
+@api_view(["POST"])
+def admin_update_order_status(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id)
+
+        new_status = request.data.get("orderStatus")
+
+        status_mapping = {
+            "Pending": "pending",
+            "Processing": "processing",
+            "Shipped": "shipped",
+            "Completed": "completed",
+            "Cancelled": "cancelled",
+        }
+
+        if new_status not in status_mapping:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Invalid order status",
+                    "received_status": new_status,
+                },
+                status=400,
+            )
+
+        order.status = status_mapping[new_status]
+        order.save()
+
+        return Response(
+            {
+                "success": True,
+                "message": "Order status updated successfully",
+                "order_id": order.id,
+                "orderStatus": order.get_status_display(),
+            },
+            status=200,
+        )
+
+    except Order.DoesNotExist:
+        return Response(
+            {
+                "success": False,
+                "message": "Order not found",
+            },
+            status=404,
+        )
