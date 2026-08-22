@@ -1059,10 +1059,45 @@ def remove_wishlist_item(request, wishlist_id):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def add_address(request):
-
     data = request.data.copy()
+    is_default = data.get("is_default", False)
+    if isinstance(is_default, str):
+        is_default = is_default.lower() in ("true", "1")
 
-    if data.get("is_default"):
+    full_name = str(data.get("full_name", "")).strip()
+    phone = str(data.get("phone", "")).strip()
+    address_line_1 = str(data.get("address_line_1", "")).strip()
+    address_line_2 = str(data.get("address_line_2", "") or "").strip()
+    city = str(data.get("city", "")).strip()
+    state = str(data.get("state", "")).strip()
+    postal_code = str(data.get("postal_code", "")).strip()
+    country = str(data.get("country", "India") or "India").strip()
+
+    # Check if an identical address already exists for this user
+    existing_address = Address.objects.filter(
+        user=request.user,
+        full_name__iexact=full_name,
+        phone__iexact=phone,
+        address_line_1__iexact=address_line_1,
+        address_line_2__iexact=address_line_2,
+        city__iexact=city,
+        state__iexact=state,
+        postal_code__iexact=postal_code,
+        country__iexact=country,
+    ).first()
+
+    if existing_address:
+        if is_default:
+            Address.objects.filter(user=request.user).exclude(id=existing_address.id).update(is_default=False)
+            existing_address.is_default = True
+            existing_address.save()
+        serializer = AddressSerializer(existing_address)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    has_existing = Address.objects.filter(user=request.user).exists()
+    if not has_existing:
+        data["is_default"] = True
+    elif is_default:
         Address.objects.filter(user=request.user).update(is_default=False)
 
     serializer = AddressSerializer(data=data)
@@ -1076,10 +1111,34 @@ def add_address(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_addresses(request):
+    addresses = Address.objects.filter(user=request.user).order_by("-is_default", "-id")
 
-    addresses = Address.objects.filter(user=request.user)
+    seen = set()
+    unique_addresses = []
+    duplicate_ids = []
 
-    serializer = AddressSerializer(addresses, many=True)
+    for addr in addresses:
+        key = (
+            (addr.full_name or "").strip().lower(),
+            (addr.phone or "").strip().lower(),
+            (addr.address_line_1 or "").strip().lower(),
+            (addr.address_line_2 or "").strip().lower(),
+            (addr.city or "").strip().lower(),
+            (addr.state or "").strip().lower(),
+            (addr.postal_code or "").strip().lower(),
+            (addr.country or "").strip().lower(),
+        )
+        if key not in seen:
+            seen.add(key)
+            unique_addresses.append(addr)
+        else:
+            duplicate_ids.append(addr.id)
+
+    # Automatically purge duplicate rows in database to keep records clean
+    if duplicate_ids:
+        Address.objects.filter(id__in=duplicate_ids).delete()
+
+    serializer = AddressSerializer(unique_addresses, many=True)
 
     return Response(serializer.data)
 
@@ -1087,11 +1146,14 @@ def get_addresses(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_default_address(request):
-
     address = Address.objects.filter(
         user=request.user,
         is_default=True
     ).first()
+
+    if not address:
+        # Fallback to the latest address if no address is explicitly marked default
+        address = Address.objects.filter(user=request.user).order_by("-id").first()
 
     if not address:
         return Response(
@@ -1100,7 +1162,6 @@ def get_default_address(request):
         )
 
     serializer = AddressSerializer(address)
-
     return Response(serializer.data)
 
 
