@@ -689,7 +689,10 @@ def mark_all_notifications_as_read(request):
     }, status=200)
 
 
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
 from adminapp.models import Order
+
 
 @api_view(["GET"])
 def admin_get_orders(request):
@@ -708,35 +711,226 @@ def admin_get_orders(request):
 
             for item in order.items.all():
                 products_data.append({
-                    "name": item.product.name if item.product else "Unknown Product",
+                    "name": (
+                        item.product.name
+                        if item.product
+                        else "Unknown Product"
+                    ),
                     "qty": item.quantity,
                     "size": item.size if item.size else "",
                 })
 
             orders_data.append({
+                # -----------------------------------------
+                # ORDER
+                # -----------------------------------------
                 "id": order.id,
                 "orderNumber": f"#ORD{order.id:04d}",
-                "customerId": order.user.id if order.user else None,
-                "customerName": order.user.username if order.user else "Guest",
+
+                # -----------------------------------------
+                # CUSTOMER
+                # -----------------------------------------
+                "customerId": (
+                    order.user.id
+                    if order.user
+                    else None
+                ),
+                "customerName": (
+                    order.user.username
+                    if order.user
+                    else "Guest"
+                ),
                 "customerEmail": order.email,
                 "phone": order.phone,
+
+                # -----------------------------------------
+                # ADDRESS
+                # -----------------------------------------
                 "shippingAddress": order.shipping_address,
-                "orderDate": order.created_at.strftime("%B %d, %Y"),
+
+                # -----------------------------------------
+                # DATES
+                # -----------------------------------------
+                "orderDate": (
+                    order.created_at.strftime("%B %d, %Y")
+                    if order.created_at
+                    else None
+                ),
+
+                "shippedDate": (
+                    order.shipped_at.strftime("%B %d, %Y")
+                    if order.shipped_at
+                    else None
+                ),
+
+                # "completedDate": (
+                #     order.completed_at.strftime("%B %d, %Y")
+                #     if order.completed_at
+                #     else None
+                # ),
+
+                # -----------------------------------------
+                # PAYMENT
+                # -----------------------------------------
                 "totalAmount": f"₹ {order.total_amount}",
                 "paymentStatus": order.payment_status,
+
+                # -----------------------------------------
+                # ORDER STATUS
+                # -----------------------------------------
                 "orderStatus": order.get_status_display(),
+
+                # -----------------------------------------
+                # SHIPPING / TRACKING
+                # -----------------------------------------
                 "trackingNumber": order.tracking_number,
                 "trackingLink": order.tracking_link,
                 "shipmentId": order.shipment_id,
+
+                # -----------------------------------------
+                # RAZORPAY
+                # -----------------------------------------
                 "razorpayOrderId": order.razorpay_order_id,
                 "razorpayPaymentId": order.razorpay_payment_id,
+
+                # -----------------------------------------
+                # PRODUCTS
+                # -----------------------------------------
                 "products": products_data,
             })
 
-        return Response({"orders": orders_data}, status=200)
+        return Response(
+            {
+                "success": True,
+                "orders": orders_data,
+            },
+            status=200,
+        )
 
     except Exception as e:
-        return Response({"error": str(e)}, status=500)
+        return Response(
+            {
+                "success": False,
+                "error": str(e),
+            },
+            status=500,
+        )
+
+
+
+from django.utils import timezone
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from adminapp.models import Order
+
+
+@api_view(["POST"])
+def admin_update_order_status(request, order_id):
+    try:
+        # Get order
+        order = Order.objects.get(id=order_id)
+
+        # Get status from frontend
+        new_status = request.data.get("orderStatus")
+
+        # Frontend status -> database status
+        status_mapping = {
+            "Pending": "pending",
+            "Processing": "processing",
+            "Shipped": "shipped",
+            "Completed": "completed",
+            "Cancelled": "cancelled",
+        }
+
+        # Validate status
+        if new_status not in status_mapping:
+            return Response(
+                {
+                    "success": False,
+                    "message": "Invalid order status",
+                    "received_status": new_status,
+                },
+                status=400,
+            )
+
+        # Convert frontend status to database value
+        new_status_value = status_mapping[new_status]
+
+        # --------------------------------------------------
+        # UPDATE ORDER STATUS
+        # --------------------------------------------------
+
+        order.status = new_status_value
+
+        # --------------------------------------------------
+        # SHIPPING DATE
+        # --------------------------------------------------
+        # Save the date/time when order becomes Shipped.
+        # Do not overwrite the original shipping date.
+
+        if new_status_value == "shipped" and not order.shipped_at:
+            order.shipped_at = timezone.now()
+
+        # --------------------------------------------------
+        # COMPLETED DATE
+        # --------------------------------------------------
+        # Save the date/time when order becomes Completed.
+        # Do not overwrite the original completed date.
+
+        # if new_status_value == "completed" and not order.completed_at:
+        #     order.completed_at = timezone.now()
+
+        # Save everything
+        order.save()
+
+        # --------------------------------------------------
+        # RESPONSE
+        # --------------------------------------------------
+
+        return Response(
+            {
+                "success": True,
+                "message": "Order status updated successfully",
+                "order_id": order.id,
+
+                # Current status
+                "orderStatus": order.get_status_display(),
+
+                # Shipping date
+                "shippedDate": (
+                    order.shipped_at.strftime("%B %d, %Y")
+                    if order.shipped_at
+                    else None
+                ),
+
+                # Completed date
+                # "completedDate": (
+                #     order.completed_at.strftime("%B %d, %Y")
+                #     if order.completed_at
+                #     else None
+                # ),
+            },
+            status=200,
+        )
+
+    except Order.DoesNotExist:
+        return Response(
+            {
+                "success": False,
+                "message": "Order not found",
+            },
+            status=404,
+        )
+
+    except Exception as e:
+        return Response(
+            {
+                "success": False,
+                "message": "Something went wrong",
+                "error": str(e),
+            },
+            status=500,
+        )
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -831,56 +1025,3 @@ def admin_get_sales_history(request):
             "success": False,
             "error": str(e)
         }, status=500)
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from rest_framework import status
-from adminapp.models import Order
-
-
-@api_view(["POST"])
-def admin_update_order_status(request, order_id):
-    try:
-        order = Order.objects.get(id=order_id)
-
-        new_status = request.data.get("orderStatus")
-
-        status_mapping = {
-            "Pending": "pending",
-            "Processing": "processing",
-            "Shipped": "shipped",
-            "Completed": "completed",
-            "Cancelled": "cancelled",
-        }
-
-        if new_status not in status_mapping:
-            return Response(
-                {
-                    "success": False,
-                    "message": "Invalid order status",
-                    "received_status": new_status,
-                },
-                status=400,
-            )
-
-        order.status = status_mapping[new_status]
-        order.save()
-
-        return Response(
-            {
-                "success": True,
-                "message": "Order status updated successfully",
-                "order_id": order.id,
-                "orderStatus": order.get_status_display(),
-            },
-            status=200,
-        )
-
-    except Order.DoesNotExist:
-        return Response(
-            {
-                "success": False,
-                "message": "Order not found",
-            },
-            status=404,
-        )
