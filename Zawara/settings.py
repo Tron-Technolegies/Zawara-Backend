@@ -70,14 +70,14 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
-    "https://zawara.in/",
     "https://zawaraadmin.netlify.app",
+    "https://zawara.in",
 
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True
 CSRF_TRUSTED_ORIGINS = [
-    "https://zawara.in/",
+    "https://zawara.in",
     "https://zawaraadmin.netlify.app",
 
 ]
