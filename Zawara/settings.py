@@ -71,14 +71,14 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://localhost:5174",
     "https://zawara.in/",
-    "zawaraadmin.netlify.app",
+    "https://zawaraadmin.netlify.app",
 
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True
 CSRF_TRUSTED_ORIGINS = [
     "https://zawara.in/",
-    "zawaraadmin.netlify.app",
+    "https://zawaraadmin.netlify.app",
 
 ]
 ROOT_URLCONF = 'Zawara.urls'
