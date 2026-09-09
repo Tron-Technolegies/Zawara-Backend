@@ -153,6 +153,9 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS") == "True"
 
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL")
 
+EMAIL_TIMEOUT = int(os.getenv("EMAIL_TIMEOUT", "10"))
+
+
 FRONTEND_URL = os.getenv("FRONTEND_URL")
 
 
