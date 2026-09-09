@@ -1323,14 +1323,15 @@ def calculate_cart_total(cart_items):
 # --------------------------------------------------
 # GET ORDERS
 # --------------------------------------------------
-
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def get_orders(request):
     try:
         user = request.user
+
         orders = (
-            Order.objects.filter(user=user)
+            Order.objects
+            .filter(user=user)
             .prefetch_related("items__product")
             .order_by("-created_at")
         )
@@ -1338,10 +1339,13 @@ def get_orders(request):
         orders_data = []
 
         for order in orders:
+
             products_data = []
 
             for item in order.items.all():
+
                 image_url = None
+
                 if item.product and getattr(item.product, "image", None):
                     try:
                         image_url = item.product.image.url
@@ -1350,16 +1354,24 @@ def get_orders(request):
 
                 products_data.append({
                     "image": image_url,
-                    "name": item.product.name if item.product else "Unknown Product",
+                    "name": (
+                        item.product.name
+                        if item.product
+                        else "Unknown Product"
+                    ),
                     "size": item.size,
                     "qty": item.quantity,
                     "price": str(item.price),
                     "total": str(item.price * item.quantity),
                 })
 
-            # If you have address fields directly in Order model, use them here
+            # Shipping address
             shipping_address = {
-                "full_name": getattr(order, "full_name", user.get_full_name() or user.username),
+                "full_name": getattr(
+                    order,
+                    "full_name",
+                    user.get_full_name() or user.username
+                ),
                 "phone": getattr(order, "phone", ""),
                 "email": getattr(order, "email", user.email),
                 "address_line_1": getattr(order, "address_line_1", ""),
@@ -1370,23 +1382,97 @@ def get_orders(request):
                 "country": getattr(order, "country", "India"),
             }
 
+            # Shipping date
+            shipped_date = None
+
+            if order.shipped_at:
+                shipped_date = order.shipped_at.strftime(
+                    "%B %d, %Y"
+                )
+
             orders_data.append({
+
+                # Basic order details
                 "id": order.id,
+
                 "orderNumber": f"#ORD{order.id:04d}",
-                "orderDate": order.created_at.strftime("%B %d, %Y"),
+
+                "orderDate": (
+                    order.created_at.strftime("%B %d, %Y")
+                    if order.created_at
+                    else None
+                ),
+
+                # Amount
                 "totalAmount": str(order.total_amount),
+
+                "subtotal": str(
+                    getattr(
+                        order,
+                        "subtotal",
+                        order.total_amount
+                    )
+                ),
+
+                "discount": str(
+                    getattr(
+                        order,
+                        "discount_amount",
+                        0
+                    )
+                ),
+
+                # Status
                 "status": order.get_status_display(),
-                "paymentMethod": getattr(order, "payment_method", "Online Payment"),
-                "subtotal": str(getattr(order, "subtotal", order.total_amount)),
-                "discount": str(getattr(order, "discount_amount", 0)),
+
+                # Payment
+                "paymentMethod": getattr(
+                    order,
+                    "payment_method",
+                    "Online Payment"
+                ),
+
+                # Address
                 "shipping_address": shipping_address,
+
+                # Products
                 "products": products_data,
+
+                # =========================
+                # SHIPPING / TRACKING
+                # =========================
+
+                "trackingNumber": (
+                    order.tracking_number
+                    if order.tracking_number
+                    else None
+                ),
+
+                "trackingLink": (
+                    order.tracking_link
+                    if order.tracking_link
+                    else None
+                ),
+
+                "shippedDate": shipped_date,
             })
 
-        return Response({"orders": orders_data}, status=200)
+        return Response(
+            {
+                "orders": orders_data
+            },
+            status=200
+        )
 
     except Exception as e:
-        return Response({"error": str(e)}, status=500)
+
+        return Response(
+            {
+                "error": str(e)
+            },
+            status=500
+        )
+    
 # --------------------------------------------------
 # CREATE RAZORPAY ORDER
 # --------------------------------------------------
