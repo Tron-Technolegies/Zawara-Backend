@@ -862,13 +862,28 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from adminapp.models import Order
 
+from django.conf import settings
+from django.core.mail import send_mail
+from django.utils import timezone
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+from adminapp.models import Order
+
+
 @api_view(["POST"])
 def admin_update_order_status(request, order_id):
     try:
-        # Get order
+        # --------------------------------------------------
+        # GET ORDER
+        # --------------------------------------------------
+
         order = Order.objects.get(id=order_id)
 
-        # Get status from frontend
+        # --------------------------------------------------
+        # GET STATUS FROM FRONTEND
+        # --------------------------------------------------
+
         new_status = request.data.get("orderStatus")
 
         # Frontend status -> database status
@@ -880,7 +895,10 @@ def admin_update_order_status(request, order_id):
             "Cancelled": "cancelled",
         }
 
-        # Validate status
+        # --------------------------------------------------
+        # VALIDATE STATUS
+        # --------------------------------------------------
+
         if new_status not in status_mapping:
             return Response(
                 {
@@ -914,18 +932,31 @@ def admin_update_order_status(request, order_id):
         order.save()
 
         # --------------------------------------------------
-        # SEND EMAIL
-        # ONLY FOR SHIPPED / COMPLETED / CANCELLED
+        # EMAIL STATUS
         # --------------------------------------------------
 
-        if new_status_value in ["shipped", "completed", "cancelled"]:
+        email_sent = False
 
-            # Format shipped date
+        # Only send email for these statuses
+        if new_status_value in [
+            "shipped",
+            "completed",
+            "cancelled"
+        ]:
+
+            # --------------------------------------------------
+            # FORMAT SHIPPING DATE
+            # --------------------------------------------------
+
             shipped_date = (
                 order.shipped_at.strftime("%B %d, %Y")
                 if order.shipped_at
                 else "-"
             )
+
+            # --------------------------------------------------
+            # EMAIL MESSAGES
+            # --------------------------------------------------
 
             status_messages = {
 
@@ -934,7 +965,9 @@ def admin_update_order_status(request, order_id):
                 # --------------------------------------------------
 
                 "shipped": {
-                    "subject": f"Your Zawara Order #{order.id} has been shipped",
+                    "subject": (
+                        f"Your Zawara Order #{order.id} has been shipped"
+                    ),
 
                     "message": f"""
 Hello,
@@ -947,6 +980,8 @@ DTDC Tracking Number: {order.tracking_number or "-"}
 
 Shipped Date: {shipped_date}
 
+Tracking Link:
+{order.tracking_link or "-"}
 
 Thank you for shopping with Zawara.
 """,
@@ -957,7 +992,9 @@ Thank you for shopping with Zawara.
                 # --------------------------------------------------
 
                 "completed": {
-                    "subject": f"Your Zawara Order #{order.id} has been completed",
+                    "subject": (
+                        f"Your Zawara Order #{order.id} has been completed"
+                    ),
 
                     "message": f"""
 Hello,
@@ -973,14 +1010,17 @@ Thank you for shopping with Zawara.
                 # --------------------------------------------------
 
                 "cancelled": {
-                    "subject": f"Your Zawara Order #{order.id} has been cancelled",
+                    "subject": (
+                        f"Your Zawara Order #{order.id} has been cancelled"
+                    ),
 
                     "message": f"""
 Hello,
 
 Your Zawara order #{order.id} has been cancelled.
 
-If you have any questions regarding your order, please contact our support team.
+If you have any questions regarding your order,
+please contact our support team.
 
 Thank you.
 """,
@@ -989,29 +1029,50 @@ Thank you.
 
             email_data = status_messages[new_status_value]
 
-            if order.email:
+            # --------------------------------------------------
+            # SEND EMAIL
+            # --------------------------------------------------
+
+            recipient = str(order.email or "").strip()
+
+            if recipient:
+
                 try:
+                    print("====================================")
                     print("STATUS EMAIL START")
-                    print("Order:", order.id)
-                    print("Recipient:", order.email)
+                    print("Order ID:", order.id)
+                    print("Recipient:", recipient)
                     print("Status:", new_status_value)
                     print("From:", settings.DEFAULT_FROM_EMAIL)
+                    print("====================================")
 
                     send_mail(
                         subject=email_data["subject"],
                         message=email_data["message"],
                         from_email=settings.DEFAULT_FROM_EMAIL,
-                        recipient_list=[order.email],
+                        recipient_list=[recipient],
                         fail_silently=False,
                     )
 
-                    print("STATUS EMAIL SENT")
+                    email_sent = True
+
+                    print("STATUS EMAIL SENT SUCCESSFULLY")
 
                 except Exception as email_error:
-                    print("STATUS EMAIL FAILED:", repr(email_error))
-                    raise
+
+                    # IMPORTANT:
+                    # Do NOT raise the exception here.
+                    # The order status is already saved.
+                    print(
+                        "STATUS EMAIL FAILED:",
+                        repr(email_error)
+                    )
+
             else:
-                print("NO ORDER EMAIL")
+                print(
+                    "STATUS EMAIL NOT SENT: "
+                    "Order does not have an email address."
+                )
 
         # --------------------------------------------------
         # RESPONSE
@@ -1021,8 +1082,12 @@ Thank you.
             {
                 "success": True,
                 "message": "Order status updated successfully",
+
                 "order_id": order.id,
+
                 "orderStatus": order.get_status_display(),
+
+                "emailSent": email_sent,
 
                 "shippedDate": (
                     order.shipped_at.strftime("%B %d, %Y")
@@ -1033,7 +1098,12 @@ Thank you.
             status=200,
         )
 
+    # --------------------------------------------------
+    # ORDER NOT FOUND
+    # --------------------------------------------------
+
     except Order.DoesNotExist:
+
         return Response(
             {
                 "success": False,
@@ -1042,7 +1112,17 @@ Thank you.
             status=404,
         )
 
+    # --------------------------------------------------
+    # OTHER ERRORS
+    # --------------------------------------------------
+
     except Exception as e:
+
+        print(
+            "ADMIN UPDATE ORDER STATUS ERROR:",
+            repr(e)
+        )
+
         return Response(
             {
                 "success": False,
@@ -1051,7 +1131,7 @@ Thank you.
             },
             status=500,
         )
-
+    
 @api_view(["POST"])
 def admin_update_tracking_number(request, order_id):
     try:
@@ -1088,7 +1168,7 @@ def admin_update_tracking_number(request, order_id):
             },
             status=500,
         )
-    
+
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
