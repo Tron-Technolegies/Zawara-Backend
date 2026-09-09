@@ -990,13 +990,28 @@ Thank you.
             email_data = status_messages[new_status_value]
 
             if order.email:
-                send_mail(
-                    subject=email_data["subject"],
-                    message=email_data["message"],
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[order.email],
-                    fail_silently=False,
-                )
+                try:
+                    print("STATUS EMAIL START")
+                    print("Order:", order.id)
+                    print("Recipient:", order.email)
+                    print("Status:", new_status_value)
+                    print("From:", settings.DEFAULT_FROM_EMAIL)
+
+                    send_mail(
+                        subject=email_data["subject"],
+                        message=email_data["message"],
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[order.email],
+                        fail_silently=False,
+                    )
+
+                    print("STATUS EMAIL SENT")
+
+                except Exception as email_error:
+                    print("STATUS EMAIL FAILED:", repr(email_error))
+                    raise
+            else:
+                print("NO ORDER EMAIL")
 
         # --------------------------------------------------
         # RESPONSE
