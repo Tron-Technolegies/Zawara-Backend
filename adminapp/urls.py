@@ -33,6 +33,16 @@ urlpatterns = [
     path('notifications/read-all/', views.mark_all_notifications_as_read, name='mark_all_notifications_as_read'),
 
     path("admin_get_orders/", views.admin_get_orders, name="get_orders"),
+    path(
+    "admin_update_tracking_link/<int:order_id>/",
+    views.admin_update_tracking_link,
+    name="admin_update_tracking_link",
+),
+path(
+    "admin_update_tracking_number/<int:order_id>/",
+    views.admin_update_tracking_number,
+    name="admin_update_tracking_number",
+),
     path("sales-history/",views.admin_get_sales_history,name="admin-sales-history"),
     path("admin_update_order_status/<int:order_id>/",views.admin_update_order_status,name="admin_update_order_status"),
 

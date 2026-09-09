@@ -3,6 +3,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.shortcuts import render
 from adminapp.models import Category
+from django.conf import settings
+from django.core.mail import send_mail
 
 
 
@@ -817,12 +819,48 @@ def admin_get_orders(request):
         )
 
 
+@api_view(["POST"])
+def admin_update_tracking_link(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id)
+
+        tracking_link = request.data.get("trackingLink", "").strip()
+
+        order.tracking_link = tracking_link
+        order.save(update_fields=["tracking_link"])
+
+        return Response(
+            {
+                "success": True,
+                "message": "Tracking link updated successfully",
+                "trackingLink": order.tracking_link,
+            },
+            status=200,
+        )
+
+    except Order.DoesNotExist:
+        return Response(
+            {
+                "success": False,
+                "error": "Order not found",
+            },
+            status=404,
+        )
+
+    except Exception as e:
+        return Response(
+            {
+                "success": False,
+                "error": str(e),
+            },
+            status=500,
+        )
+
 
 from django.utils import timezone
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from adminapp.models import Order
-
 
 @api_view(["POST"])
 def admin_update_order_status(request, order_id):
@@ -865,23 +903,100 @@ def admin_update_order_status(request, order_id):
         # --------------------------------------------------
         # SHIPPING DATE
         # --------------------------------------------------
-        # Save the date/time when order becomes Shipped.
-        # Do not overwrite the original shipping date.
 
         if new_status_value == "shipped" and not order.shipped_at:
             order.shipped_at = timezone.now()
 
         # --------------------------------------------------
-        # COMPLETED DATE
+        # SAVE ORDER
         # --------------------------------------------------
-        # Save the date/time when order becomes Completed.
-        # Do not overwrite the original completed date.
 
-        # if new_status_value == "completed" and not order.completed_at:
-        #     order.completed_at = timezone.now()
-
-        # Save everything
         order.save()
+
+        # --------------------------------------------------
+        # SEND EMAIL
+        # ONLY FOR SHIPPED / COMPLETED / CANCELLED
+        # --------------------------------------------------
+
+        if new_status_value in ["shipped", "completed", "cancelled"]:
+
+            # Format shipped date
+            shipped_date = (
+                order.shipped_at.strftime("%B %d, %Y")
+                if order.shipped_at
+                else "-"
+            )
+
+            status_messages = {
+
+                # --------------------------------------------------
+                # SHIPPED
+                # --------------------------------------------------
+
+                "shipped": {
+                    "subject": f"Your Zawara Order #{order.id} has been shipped",
+
+                    "message": f"""
+Hello,
+
+Your Zawara order #{order.id} has been shipped successfully.
+
+Shipment Details:
+
+DTDC Tracking Number: {order.tracking_number or "-"}
+
+Shipped Date: {shipped_date}
+
+
+Thank you for shopping with Zawara.
+""",
+                },
+
+                # --------------------------------------------------
+                # COMPLETED
+                # --------------------------------------------------
+
+                "completed": {
+                    "subject": f"Your Zawara Order #{order.id} has been completed",
+
+                    "message": f"""
+Hello,
+
+Your Zawara order #{order.id} has been successfully completed.
+
+Thank you for shopping with Zawara.
+""",
+                },
+
+                # --------------------------------------------------
+                # CANCELLED
+                # --------------------------------------------------
+
+                "cancelled": {
+                    "subject": f"Your Zawara Order #{order.id} has been cancelled",
+
+                    "message": f"""
+Hello,
+
+Your Zawara order #{order.id} has been cancelled.
+
+If you have any questions regarding your order, please contact our support team.
+
+Thank you.
+""",
+                },
+            }
+
+            email_data = status_messages[new_status_value]
+
+            if order.email:
+                send_mail(
+                    subject=email_data["subject"],
+                    message=email_data["message"],
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[order.email],
+                    fail_silently=False,
+                )
 
         # --------------------------------------------------
         # RESPONSE
@@ -892,23 +1007,13 @@ def admin_update_order_status(request, order_id):
                 "success": True,
                 "message": "Order status updated successfully",
                 "order_id": order.id,
-
-                # Current status
                 "orderStatus": order.get_status_display(),
 
-                # Shipping date
                 "shippedDate": (
                     order.shipped_at.strftime("%B %d, %Y")
                     if order.shipped_at
                     else None
                 ),
-
-                # Completed date
-                # "completedDate": (
-                #     order.completed_at.strftime("%B %d, %Y")
-                #     if order.completed_at
-                #     else None
-                # ),
             },
             status=200,
         )
@@ -931,6 +1036,44 @@ def admin_update_order_status(request, order_id):
             },
             status=500,
         )
+
+@api_view(["POST"])
+def admin_update_tracking_number(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id)
+
+        tracking_number = request.data.get("trackingNumber", "").strip()
+
+        order.tracking_number = tracking_number
+        order.save(update_fields=["tracking_number"])
+
+        return Response(
+            {
+                "success": True,
+                "message": "Tracking number updated successfully",
+                "trackingNumber": order.tracking_number,
+            },
+            status=200,
+        )
+
+    except Order.DoesNotExist:
+        return Response(
+            {
+                "success": False,
+                "error": "Order not found",
+            },
+            status=404,
+        )
+
+    except Exception as e:
+        return Response(
+            {
+                "success": False,
+                "error": str(e),
+            },
+            status=500,
+        )
+    
 
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
