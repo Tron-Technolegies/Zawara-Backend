@@ -870,7 +870,6 @@ from rest_framework.response import Response
 
 from adminapp.models import Order
 
-
 @api_view(["POST"])
 def admin_update_order_status(request, order_id):
     try:
@@ -886,7 +885,6 @@ def admin_update_order_status(request, order_id):
 
         new_status = request.data.get("orderStatus")
 
-        # Frontend status -> database status
         status_mapping = {
             "Pending": "pending",
             "Processing": "processing",
@@ -909,7 +907,6 @@ def admin_update_order_status(request, order_id):
                 status=400,
             )
 
-        # Convert frontend status to database value
         new_status_value = status_mapping[new_status]
 
         # --------------------------------------------------
@@ -936,12 +933,13 @@ def admin_update_order_status(request, order_id):
         # --------------------------------------------------
 
         email_sent = False
+        email_error = None
 
-        # Only send email for these statuses
+        # Send email only for these statuses
         if new_status_value in [
             "shipped",
             "completed",
-            "cancelled"
+            "cancelled",
         ]:
 
             # --------------------------------------------------
@@ -959,10 +957,6 @@ def admin_update_order_status(request, order_id):
             # --------------------------------------------------
 
             status_messages = {
-
-                # --------------------------------------------------
-                # SHIPPED
-                # --------------------------------------------------
 
                 "shipped": {
                     "subject": (
@@ -987,10 +981,6 @@ Thank you for shopping with Zawara.
 """,
                 },
 
-                # --------------------------------------------------
-                # COMPLETED
-                # --------------------------------------------------
-
                 "completed": {
                     "subject": (
                         f"Your Zawara Order #{order.id} has been completed"
@@ -1004,10 +994,6 @@ Your Zawara order #{order.id} has been successfully completed.
 Thank you for shopping with Zawara.
 """,
                 },
-
-                # --------------------------------------------------
-                # CANCELLED
-                # --------------------------------------------------
 
                 "cancelled": {
                     "subject": (
@@ -1044,6 +1030,8 @@ Thank you.
                     print("Recipient:", recipient)
                     print("Status:", new_status_value)
                     print("From:", settings.DEFAULT_FROM_EMAIL)
+                    print("SMTP HOST:", settings.EMAIL_HOST)
+                    print("SMTP PORT:", settings.EMAIL_PORT)
                     print("====================================")
 
                     send_mail(
@@ -1060,41 +1048,44 @@ Thank you.
 
                 except Exception as email_error:
 
-                    # IMPORTANT:
-                    # Do NOT raise the exception here.
-                    # The order status is already saved.
-                    print(
-                        "STATUS EMAIL FAILED:",
-                        repr(email_error)
-                    )
+                    email_error = str(email_error)
+
+                    print("====================================")
+                    print("STATUS EMAIL FAILED")
+                    print("ERROR:", repr(email_error))
+                    print("====================================")
 
             else:
+                email_error = "Order does not have an email address."
+
                 print(
-                    "STATUS EMAIL NOT SENT: "
-                    "Order does not have an email address."
+                    "STATUS EMAIL NOT SENT:",
+                    email_error
                 )
 
         # --------------------------------------------------
         # RESPONSE
         # --------------------------------------------------
 
+        response_data = {
+            "success": True,
+            "message": "Order status updated successfully",
+            "order_id": order.id,
+            "orderStatus": order.get_status_display(),
+            "emailSent": email_sent,
+            "shippedDate": (
+                order.shipped_at.strftime("%B %d, %Y")
+                if order.shipped_at
+                else None
+            ),
+        }
+
+        # Add email error only when email failed
+        if not email_sent and email_error:
+            response_data["emailError"] = email_error
+
         return Response(
-            {
-                "success": True,
-                "message": "Order status updated successfully",
-
-                "order_id": order.id,
-
-                "orderStatus": order.get_status_display(),
-
-                "emailSent": email_sent,
-
-                "shippedDate": (
-                    order.shipped_at.strftime("%B %d, %Y")
-                    if order.shipped_at
-                    else None
-                ),
-            },
+            response_data,
             status=200,
         )
 
@@ -1131,6 +1122,7 @@ Thank you.
             },
             status=500,
         )
+    
     
 @api_view(["POST"])
 def admin_update_tracking_number(request, order_id):
