@@ -911,7 +911,7 @@ def admin_update_order_status(request, order_id):
         new_status_value = status_mapping[new_status]
 
         # --------------------------------------------------
-        # CHECK WHETHER STATUS ACTUALLY CHANGED
+        # CHECK OLD STATUS
         # --------------------------------------------------
 
         old_status_value = order.status
@@ -943,11 +943,14 @@ def admin_update_order_status(request, order_id):
         email_sent = False
         email_error = None
 
-        # Send email ONLY when status actually changes
+        # --------------------------------------------------
+        # SEND EMAIL ONLY IF STATUS CHANGED
+        # --------------------------------------------------
+
         if status_changed:
 
             # --------------------------------------------------
-            # FORMAT SHIPPING DATE
+            # SHIPPING DATE
             # --------------------------------------------------
 
             shipped_date = (
@@ -962,15 +965,10 @@ def admin_update_order_status(request, order_id):
 
             status_messages = {
 
-                # --------------------------------------------------
-                # PENDING
-                # --------------------------------------------------
-
                 "pending": {
                     "subject": (
                         f"Your Zawara Order #{order.id} is pending"
                     ),
-
                     "message": f"""
 Hello,
 
@@ -982,15 +980,10 @@ Thank you for shopping with Zawara.
 """,
                 },
 
-                # --------------------------------------------------
-                # PROCESSING
-                # --------------------------------------------------
-
                 "processing": {
                     "subject": (
                         f"Your Zawara Order #{order.id} is being processed"
                     ),
-
                     "message": f"""
 Hello,
 
@@ -1002,15 +995,10 @@ Thank you for shopping with Zawara.
 """,
                 },
 
-                # --------------------------------------------------
-                # SHIPPED
-                # --------------------------------------------------
-
                 "shipped": {
                     "subject": (
                         f"Your Zawara Order #{order.id} has been shipped"
                     ),
-
                     "message": f"""
 Hello,
 
@@ -1029,15 +1017,10 @@ Thank you for shopping with Zawara.
 """,
                 },
 
-                # --------------------------------------------------
-                # COMPLETED
-                # --------------------------------------------------
-
                 "completed": {
                     "subject": (
                         f"Your Zawara Order #{order.id} has been completed"
                     ),
-
                     "message": f"""
 Hello,
 
@@ -1047,15 +1030,10 @@ Thank you for shopping with Zawara.
 """,
                 },
 
-                # --------------------------------------------------
-                # CANCELLED
-                # --------------------------------------------------
-
                 "cancelled": {
                     "subject": (
                         f"Your Zawara Order #{order.id} has been cancelled"
                     ),
-
                     "message": f"""
 Hello,
 
@@ -1072,7 +1050,7 @@ Thank you.
             email_data = status_messages[new_status_value]
 
             # --------------------------------------------------
-            # SEND EMAIL
+            # GET CUSTOMER EMAIL
             # --------------------------------------------------
 
             recipient = str(order.email or "").strip()
@@ -1114,7 +1092,9 @@ Thank you.
 
             else:
 
-                email_error = "Order does not have an email address."
+                email_error = (
+                    "Order does not have an email address."
+                )
 
                 print(
                     "STATUS EMAIL NOT SENT:",
@@ -1140,7 +1120,10 @@ Thank you.
             ),
         }
 
-        # Add email error only when email failed
+        # --------------------------------------------------
+        # EMAIL ERROR
+        # --------------------------------------------------
+
         if status_changed and not email_sent and email_error:
             response_data["emailError"] = email_error
 
@@ -1182,16 +1165,23 @@ Thank you.
             },
             status=500,
         )
-    
+
+
 @api_view(["POST"])
 def admin_update_tracking_number(request, order_id):
     try:
         order = Order.objects.get(id=order_id)
 
-        tracking_number = request.data.get("trackingNumber", "").strip()
+        tracking_number = request.data.get(
+            "trackingNumber",
+            ""
+        ).strip()
 
         order.tracking_number = tracking_number
-        order.save(update_fields=["tracking_number"])
+
+        order.save(
+            update_fields=["tracking_number"]
+        )
 
         return Response(
             {
@@ -1219,6 +1209,7 @@ def admin_update_tracking_number(request, order_id):
             },
             status=500,
         )
+
 
 
 from rest_framework.decorators import api_view
