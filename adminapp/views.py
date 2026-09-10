@@ -1046,13 +1046,13 @@ Thank you.
 
                     print("STATUS EMAIL SENT SUCCESSFULLY")
 
-                except Exception as email_error:
+                except Exception as exc:
 
-                    email_error = str(email_error)
+                    email_error = str(exc)
 
                     print("====================================")
                     print("STATUS EMAIL FAILED")
-                    print("ERROR:", repr(email_error))
+                    print("ERROR:", repr(exc))
                     print("====================================")
 
             else:
