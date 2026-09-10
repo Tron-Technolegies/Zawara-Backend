@@ -910,6 +910,13 @@ def admin_update_order_status(request, order_id):
         new_status_value = status_mapping[new_status]
 
         # --------------------------------------------------
+        # CHECK WHETHER STATUS ACTUALLY CHANGED
+        # --------------------------------------------------
+
+        old_status_value = order.status
+        status_changed = old_status_value != new_status_value
+
+        # --------------------------------------------------
         # UPDATE ORDER STATUS
         # --------------------------------------------------
 
@@ -935,12 +942,8 @@ def admin_update_order_status(request, order_id):
         email_sent = False
         email_error = None
 
-        # Send email only for these statuses
-        if new_status_value in [
-            "shipped",
-            "completed",
-            "cancelled",
-        ]:
+        # Send email ONLY when status actually changes
+        if status_changed:
 
             # --------------------------------------------------
             # FORMAT SHIPPING DATE
@@ -957,6 +960,50 @@ def admin_update_order_status(request, order_id):
             # --------------------------------------------------
 
             status_messages = {
+
+                # --------------------------------------------------
+                # PENDING
+                # --------------------------------------------------
+
+                "pending": {
+                    "subject": (
+                        f"Your Zawara Order #{order.id} is pending"
+                    ),
+
+                    "message": f"""
+Hello,
+
+Your Zawara order #{order.id} is currently pending.
+
+We will process your order shortly.
+
+Thank you for shopping with Zawara.
+""",
+                },
+
+                # --------------------------------------------------
+                # PROCESSING
+                # --------------------------------------------------
+
+                "processing": {
+                    "subject": (
+                        f"Your Zawara Order #{order.id} is being processed"
+                    ),
+
+                    "message": f"""
+Hello,
+
+Your Zawara order #{order.id} is now being processed.
+
+We are preparing your order for shipment.
+
+Thank you for shopping with Zawara.
+""",
+                },
+
+                # --------------------------------------------------
+                # SHIPPED
+                # --------------------------------------------------
 
                 "shipped": {
                     "subject": (
@@ -981,6 +1028,10 @@ Thank you for shopping with Zawara.
 """,
                 },
 
+                # --------------------------------------------------
+                # COMPLETED
+                # --------------------------------------------------
+
                 "completed": {
                     "subject": (
                         f"Your Zawara Order #{order.id} has been completed"
@@ -994,6 +1045,10 @@ Your Zawara order #{order.id} has been successfully completed.
 Thank you for shopping with Zawara.
 """,
                 },
+
+                # --------------------------------------------------
+                # CANCELLED
+                # --------------------------------------------------
 
                 "cancelled": {
                     "subject": (
@@ -1027,8 +1082,9 @@ Thank you.
                     print("====================================")
                     print("STATUS EMAIL START")
                     print("Order ID:", order.id)
+                    print("Old Status:", old_status_value)
+                    print("New Status:", new_status_value)
                     print("Recipient:", recipient)
-                    print("Status:", new_status_value)
                     print("From:", settings.DEFAULT_FROM_EMAIL)
                     print("SMTP HOST:", settings.EMAIL_HOST)
                     print("SMTP PORT:", settings.EMAIL_PORT)
@@ -1056,6 +1112,7 @@ Thank you.
                     print("====================================")
 
             else:
+
                 email_error = "Order does not have an email address."
 
                 print(
@@ -1071,7 +1128,9 @@ Thank you.
             "success": True,
             "message": "Order status updated successfully",
             "order_id": order.id,
+            "oldStatus": old_status_value,
             "orderStatus": order.get_status_display(),
+            "statusChanged": status_changed,
             "emailSent": email_sent,
             "shippedDate": (
                 order.shipped_at.strftime("%B %d, %Y")
@@ -1081,7 +1140,7 @@ Thank you.
         }
 
         # Add email error only when email failed
-        if not email_sent and email_error:
+        if status_changed and not email_sent and email_error:
             response_data["emailError"] = email_error
 
         return Response(
@@ -1122,46 +1181,6 @@ Thank you.
             },
             status=500,
         )
-    
-    
-@api_view(["POST"])
-def admin_update_tracking_number(request, order_id):
-    try:
-        order = Order.objects.get(id=order_id)
-
-        tracking_number = request.data.get("trackingNumber", "").strip()
-
-        order.tracking_number = tracking_number
-        order.save(update_fields=["tracking_number"])
-
-        return Response(
-            {
-                "success": True,
-                "message": "Tracking number updated successfully",
-                "trackingNumber": order.tracking_number,
-            },
-            status=200,
-        )
-
-    except Order.DoesNotExist:
-        return Response(
-            {
-                "success": False,
-                "error": "Order not found",
-            },
-            status=404,
-        )
-
-    except Exception as e:
-        return Response(
-            {
-                "success": False,
-                "error": str(e),
-            },
-            status=500,
-        )
-
-
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from adminapp.models import Order
