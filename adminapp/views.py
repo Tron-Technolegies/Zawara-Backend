@@ -870,6 +870,7 @@ from rest_framework.response import Response
 
 from adminapp.models import Order
 
+
 @api_view(["POST"])
 def admin_update_order_status(request, order_id):
     try:
@@ -1181,6 +1182,45 @@ Thank you.
             },
             status=500,
         )
+    
+@api_view(["POST"])
+def admin_update_tracking_number(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id)
+
+        tracking_number = request.data.get("trackingNumber", "").strip()
+
+        order.tracking_number = tracking_number
+        order.save(update_fields=["tracking_number"])
+
+        return Response(
+            {
+                "success": True,
+                "message": "Tracking number updated successfully",
+                "trackingNumber": order.tracking_number,
+            },
+            status=200,
+        )
+
+    except Order.DoesNotExist:
+        return Response(
+            {
+                "success": False,
+                "error": "Order not found",
+            },
+            status=404,
+        )
+
+    except Exception as e:
+        return Response(
+            {
+                "success": False,
+                "error": str(e),
+            },
+            status=500,
+        )
+
+
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from adminapp.models import Order
